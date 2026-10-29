@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+backend/.env
+
+# Node
+node_modules/
+dist/
+.npm-cache/
+frontend/.env
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+.env
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
