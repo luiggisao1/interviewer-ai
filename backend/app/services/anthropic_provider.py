@@ -1,7 +1,7 @@
 import copy
 import json
 import logging
-from typing import TypeVar, cast
+from typing import cast
 
 import anthropic
 from anthropic import DefaultAioHttpClient
@@ -11,9 +11,11 @@ from pydantic import BaseModel
 
 from app.exceptions import LLMProviderError
 from app.schemas import (
+    CreatePlanOutputFormat,
     Evaluation,
     EvaluationRequest,
     InterviewPlan,
+    NextTurnOutputFormat,
     NextTurnRequest,
     PlanRequest,
 )
@@ -21,18 +23,6 @@ from app.services.base import AIProvider
 from app.services.prompts import build_evaluation_prompt
 
 logger = logging.getLogger(__name__)
-
-
-T = TypeVar("T", bound=BaseModel)
-
-
-class CreatePlanOutputFormat(BaseModel):
-    plan: InterviewPlan
-    opening_message: str
-
-class NextTurnOutputFormat(BaseModel):
-    interviewer_message: str
-    is_complete: bool
 
 
 def _dereference_schema(schema: dict) -> dict:
@@ -62,11 +52,9 @@ class AnthropicProvider(AIProvider):
     def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022") -> None:
         self.api_key = api_key
         self.model = model
-        self.client = wrap_anthropic(
-            anthropic.AsyncAnthropic(api_key=self.api_key, http_client=DefaultAioHttpClient())
-        )
+        self.client = wrap_anthropic(anthropic.AsyncAnthropic(api_key=self.api_key, http_client=DefaultAioHttpClient()))
 
-    async def call_llm(
+    async def call_llm[T: BaseModel](
         self, system_prompt: str, output_format: type[T], max_tokens: int, messages: list[BetaMessageParam]
     ) -> T:
         try:
@@ -114,15 +102,11 @@ class AnthropicProvider(AIProvider):
             BetaUserMessageParam(role="user", content=json.dumps(request.model_dump(mode="json"))),
         ]
         max_tokens = 8192
-        system_prompt = (
-            "Create a practical interview plan based only on the supplied guide. "
-            "Keep questions concise. Follow custom instructions when safe. "
-            "Do not provide any additional information or context."
-            "Create a welcome message introducing yourself and the interview plan."
-        )
-
         result = await self.call_llm(
-            system_prompt, output_format=CreatePlanOutputFormat, max_tokens=max_tokens, messages=messages
+            self.create_plan_system_prompt,
+            output_format=CreatePlanOutputFormat,
+            max_tokens=max_tokens,
+            messages=messages,
         )
 
         return result.plan, result.opening_message
@@ -132,13 +116,11 @@ class AnthropicProvider(AIProvider):
             BetaUserMessageParam(role="user", content=json.dumps(request.model_dump(mode="json"))),
         ]
         max_tokens = 1024
-        system_prompt = (
-            "Act as a supportive but realistic interviewer. Briefly react, then ask one planned question. "
-            "Mark complete when estimated turns are answered. Do not provide evaluation yet."
-        )
-
         result = await self.call_llm(
-            system_prompt, output_format=NextTurnOutputFormat, max_tokens=max_tokens, messages=messages
+            self.next_turn_system_prompt,
+            output_format=NextTurnOutputFormat,
+            max_tokens=max_tokens,
+            messages=messages,
         )
         return result.interviewer_message, result.is_complete
 

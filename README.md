@@ -29,41 +29,54 @@ During end-to-end testing of the evaluation pipeline, a critical systemic failur
 
 Following the evaluation harness methodology popularized by **EleutherAI's `lm-evaluation-harness`** (the standard testing architecture used across the **Hugging Face Open LLM Leaderboard**), we implemented an automated, reproducible A/B evaluation harness ([`backend/scripts/benchmark_eval.py`](backend/scripts/benchmark_eval.py)). 
 
-The harness evaluated an identical, exemplary Python memory management response across all three Anthropic model tiers under two prompt paradigms (uncalibrated baseline vs. additive calibrated):
+The harness evaluated an identical, exemplary Python memory management response across both **Anthropic Claude** and **Google Gemini** model tiers under two prompt paradigms (uncalibrated baseline vs. additive calibrated):
 
-| Model Tier | Model Identifier | Baseline Score (Old) | Calibrated Score (New) | Score Delta ($\Delta$) | Qualitative Shift in Feedback |
+| Provider | Model Tier | Model Identifier | Baseline Score (Old) | Calibrated Score (New) | Score Delta ($\Delta$) | Qualitative Shift in Feedback |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Anthropic** | Compact / Fast | `claude-haiku-5-5` | 78.0% | **92.0%** | **+14.0 pts** | Shifted from CLI argument nitpicks to allocator fragmentation and RSS plateau analysis |
+| **Anthropic** | Balanced / Production | `claude-sonnet-5-5` | 84.0% | **90.0%** | **+6.0 pts** | Explicitly labeled as *"Staff-level frontier"*: glibc malloc arenas, `jemalloc`, and `MALLOC_ARENA_MAX` |
+| **Anthropic** | Flagship / Frontier | `claude-opus-5-5` | 82.0% | **95.0%** | **+13.0 pts** | Flawless holistic synthesis, zero false nitpicks, recognized deep production engineering |
+| **Google** | Lightweight / Fast | `gemini-3.5-flash-lite` | 100.0% | **100.0%** | +0.0 pts | High-speed (~1.9s) box checking, but feedback ceiling capped at *"None required"* |
+| **Google** | Balanced / Production | `gemini-3.8-flash` | 96.0% | **100.0%** | **+4.0 pts** | Full-mark recognition with Staff-level suggestions: glibc fragmentation, `jemalloc`, and `mimalloc` |
+| **Google** | Flagship / Frontier | `gemini-4-argon` | 88.0% | **98.0%** | **+10.0 pts** | **Highest Technical Insight (98%)**: Explicitly cited *"Staff/Principal territory: C-extension/native heap fragmentation where tracemalloc cannot see"* |
+
+> **Key Takeaway**: 
+> 1. **Frontier Depth**: **`gemini-4-argon` (98.0%)** and **`claude-opus-5-5` (95.0%)** emerged as the top-tier evaluators. `gemini-4-argon` delivered the single most technically profound architectural feedback (identifying that Python's `tracemalloc` cannot inspect C-extension native heaps).
+> 2. **Universal Generalization**: Calibrated additive rubrics boosted scores by an average of **+9.4 points** across non-trivial evaluations, completely eliminating the "moving goalpost" anomaly across both Google and Anthropic model families.
+> 3. **The Mentorship Ceiling**: Lightweight models (`flash-lite`) accurately verify requirements, but lack the parameter depth to provide proactive Staff-level architectural roadmaps.
+
+### 4. Cost vs. Performance ROI Analysis (Unit Economics)
+
+Deploying frontier flagship models universally introduces significant cost and latency trade-offs. The table below details input/output token pricing per 1M tokens, estimated cost per evaluation, and recommended production routing:
+
+| Provider | Model | Pricing (Input / Output per 1M) | Approx. Cost per Evaluation | Calibrated Score | Recommended Production Role |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Compact / Fast** | `claude-haiku-5-5` | 78.0% | **92.0%** | **+14.0 pts** | Shifted from CLI argument nitpicks to allocator fragmentation and RSS plateau analysis |
-| **Balanced / Production** | `claude-sonnet-5-5` | 84.0% | **90.0%** | **+6.0 pts** | Explicitly labeled as *"Staff-level frontier"*: glibc malloc arenas, `jemalloc`, and `MALLOC_ARENA_MAX` |
-| **Flagship / Frontier** | `claude-opus-5-5` | 82.0% | **95.0%** | **+13.0 pts** | **Top Performer (95%)**: Flawless holistic synthesis, zero false nitpicks, recognized deep production engineering |
+| **Google** | **Gemini 3.5 Flash-Lite** | **\$0.075 / \$0.30** | **~\$0.0003** (< 1/30th cent) | **100.0%** | **Ultra-Low Cost**: Instant turn-by-turn interactive chat and practice runs. |
+| **Google** | **Gemini 3.8 Flash** | **\$0.15 / \$0.60** | **~\$0.0008** (< 1/10th cent) | **100.0%** | **Unbeatable ROI Champion**: 100% accuracy + `jemalloc` feedback at micro-penny cost. |
+| **Anthropic** | **Claude Haiku** | **\$0.80 / \$4.00** | **~\$0.003** (~1/3 cent) | **92.0%** | **Balanced Conversationalist**: Low latency turn-by-turn chat. |
+| **Anthropic** | **Claude Sonnet** | **\$3.00 / \$15.00** | **~\$0.015** (~1.5 cents) | **90.0%** | **The Production Baseline**: Deep Linux/glibc systems feedback. |
+| **Google** | **Gemini 4 Argon** | **\$7.00 / \$28.00** | **~\$0.035 - \$0.05** (~4 cents) | **98.0%** | **Frontier Technical Mentor**: Most expensive Gemini tier; detects C-extension blindspots. |
+| **Anthropic** | **Claude Opus** | **\$15.00 / \$75.00** | **~\$0.080 - \$0.10** (~8–10 cents) | **95.0%** | **Enterprise Executive**: Opt-in toggle for high-stakes Staff+ candidate reviews. |
 
-> **Key Takeaway**: **Claude Opus (`claude-opus-5-5`) is the highest-performing evaluator**, achieving **95.0%** and demonstrating the most nuanced recognition of senior engineering trade-offs. Meanwhile, prompt calibration increased scores by an average of **+11.0 points** across all model tiers without code-level hardcoding.
-
-### 4. Cost vs. Performance ROI Analysis (Production Strategy)
-
-While **Opus** achieved the highest raw score, deploying it universally in production introduces significant unit economics trade-offs:
-
-| Model | Pricing (Input / Output per 1M) | Approx. Cost per Evaluation | Calibrated Score | Recommended Production Role |
-| :--- | :--- | :--- | :--- | :--- |
-| **Claude Haiku** | **\$0.80 / \$4.00** | **~\$0.003** (< 1/3 of a cent) | **92.0%** | **Highest ROI**: Default for turn-by-turn chat and high-volume practice. |
-| **Claude Sonnet** | **\$3.00 / \$15.00** | **~\$0.015** (~1.5 cents) | **90.0%** | **The Production Sweet Spot**: Deepest systems insights (`jemalloc`, `MALLOC_ARENA_MAX`). |
-| **Claude Opus** | **\$15.00 / \$75.00** | **~\$0.080 - \$0.10** (~8–10 cents) | **95.0%** | **Enterprise Tier**: Opt-in for high-stakes executive / Staff+ evaluations. |
-
-#### The Engineering Decision:
-Paying an **~18x–25x cost premium for Opus** yields only a marginal **+3.0 point gain over calibrated Haiku (92% → 95%)**. 
+#### The Engineering Decision: Tiered Model Routing
+Paying a **50x–100x cost premium** for `gemini-4-argon` or `claude-opus-5-5` during simple conversational turns is economically inefficient. 
 
 Therefore, our architecture implements **Tiered Model Routing**:
-1. **Interactive Turns (`next_turn`)**: Always route to **Haiku** for sub-second streaming latency and negligible token cost across multi-turn interviews.
-2. **Final Rubric Evaluation (`evaluate`)**: Default to **Haiku or Sonnet** (90%–92% senior accuracy at micro-penny cost), while offering **Opus** as an opt-in toggle for candidates preparing for Staff/Principal-level interviews.
+1. **Interactive Turns (`next_turn`)**: Route to **Gemini 3.5 Flash-Lite** or **Claude Haiku** for sub-second response times and negligible token expenditure.
+2. **Standard Evaluation (`evaluate`)**: Default to **Gemini 3.8 Flash** or **Claude Sonnet** (providing 90%–100% calibrated accuracy with allocator insights at under 1.5 cents).
+3. **Staff+ Deep Audit (`evaluate` toggle)**: Route to **Gemini 4 Argon** or **Claude Opus** when the user requests an executive/Staff+ technical audit to uncover native heap and memory profiler blindspots.
 
 #### Reproducing the Benchmark
 ```bash
 cd backend
-# Benchmark Opus (Top Performer)
-uv run python scripts/benchmark_eval.py --prompt both --runs 1 --model claude-opus-5-5
 
-# Benchmark Haiku or Sonnet (High ROI)
-uv run python scripts/benchmark_eval.py --prompt both --runs 1 --model claude-haiku-5-5
+# Benchmark Google Gemini models
+uv run python scripts/benchmark_eval.py --provider gemini --prompt both --runs 1 --model gemini-4-argon
+uv run python scripts/benchmark_eval.py --provider gemini --prompt both --runs 1 --model gemini-3.8-flash
+
+# Benchmark Anthropic Claude models
+uv run python scripts/benchmark_eval.py --provider anthropic --prompt both --runs 1 --model claude-opus-5-5
+uv run python scripts/benchmark_eval.py --provider anthropic --prompt both --runs 1 --model claude-sonnet-5-5
 ```
 
 ---

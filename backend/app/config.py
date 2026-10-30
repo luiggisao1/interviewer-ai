@@ -54,7 +54,7 @@ class Settings(BaseSettings):
             return "anthropic"
         if provider == "openai" and self.openai_api_key:
             return "openai"
-        if provider == "gemini" and self.google_api_key:
+        if provider in ("gemini", "google") and self.google_api_key:
             return "gemini"
         return "mock"
 

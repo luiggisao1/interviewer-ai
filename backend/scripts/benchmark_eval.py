@@ -27,6 +27,7 @@ from app.schemas import (  # noqa: E402
     Role,
 )
 from app.services.anthropic_provider import AnthropicProvider  # noqa: E402
+from app.services.gemini_provider import GeminiProvider  # noqa: E402
 from app.services.prompts.evaluation import (  # noqa: E402
     BASELINE_EVALUATION_PROMPT,
     CALIBRATED_EVALUATION_PROMPT,
@@ -67,31 +68,50 @@ EXEMPLARY_SENIOR_ANSWER = (
 
 
 async def evaluate_single_run(
-    provider: AnthropicProvider,
+    provider: AnthropicProvider | GeminiProvider,
     prompt_template: str,
     payload: dict,
 ) -> Evaluation:
     system_prompt = prompt_template.format(count=len(payload["answer_pairs"]))
-    messages = [
-        {"role": "user", "content": json.dumps(payload)},
-    ]
+    if isinstance(provider, AnthropicProvider):
+        messages = [
+            {"role": "user", "content": json.dumps(payload)},
+        ]
+        return await provider.call_llm(
+            system_prompt=system_prompt,
+            output_format=Evaluation,
+            max_tokens=8192,
+            messages=messages,  # type: ignore[arg-type]
+        )
     return await provider.call_llm(
         system_prompt=system_prompt,
         output_format=Evaluation,
-        max_tokens=8192,
-        messages=messages,  # type: ignore[arg-type]
+        contents=json.dumps(payload),
     )
 
 
-async def run_benchmark(runs: int, model: str | None, prompt_choice: str = "both") -> None:
+async def run_benchmark(
+    runs: int,
+    model: str | None,
+    prompt_choice: str = "both",
+    provider_choice: str = "anthropic",
+) -> None:
     settings = get_settings()
-    api_key = settings.anthropic_api_key
-    if not api_key:
-        logger.error("ANTHROPIC_API_KEY is not set in backend/.env")
-        sys.exit(1)
 
-    target_model = model or settings.anthropic_model
-    provider = AnthropicProvider(api_key=api_key, model=target_model)
+    if provider_choice == "gemini":
+        api_key = settings.google_api_key
+        if not api_key:
+            logger.error("GOOGLE_API_KEY is not set in backend/.env")
+            sys.exit(1)
+        target_model = model or settings.gemini_model
+        provider: AnthropicProvider | GeminiProvider = GeminiProvider(api_key=api_key, model=target_model)
+    else:
+        api_key = settings.anthropic_api_key
+        if not api_key:
+            logger.error("ANTHROPIC_API_KEY is not set in backend/.env")
+            sys.exit(1)
+        target_model = model or settings.anthropic_model
+        provider = AnthropicProvider(api_key=api_key, model=target_model)
 
     config = InterviewConfig(
         role=Role.backend_engineer,
@@ -196,13 +216,25 @@ async def run_benchmark(runs: int, model: str | None, prompt_choice: str = "both
 """
         print("\n" + markdown_report)
 
-    await provider.client.close()
+    if isinstance(provider, AnthropicProvider):
+        await provider.client.close()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark LLM evaluation prompts.")
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "gemini"],
+        default="anthropic",
+        help="AI provider to benchmark (default: anthropic)",
+    )
     parser.add_argument("--runs", type=int, default=3, help="Number of benchmark iterations per prompt (default: 3)")
-    parser.add_argument("--model", type=str, default=None, help="Anthropic model override")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model override (e.g. gemini-2.5-flash or claude-sonnet-5-5)",
+    )
     parser.add_argument(
         "--prompt",
         choices=["both", "calibrated", "baseline"],
@@ -211,7 +243,14 @@ def main():
     )
     args = parser.parse_args()
 
-    asyncio.run(run_benchmark(args.runs, args.model, args.prompt))
+    asyncio.run(
+        run_benchmark(
+            runs=args.runs,
+            model=args.model,
+            prompt_choice=args.prompt,
+            provider_choice=args.provider,
+        )
+    )
 
 
 if __name__ == "__main__":

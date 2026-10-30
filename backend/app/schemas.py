@@ -115,6 +115,14 @@ class Evaluation(BaseModel):
     next_steps: list[str] = Field(default_factory=list)
 
 
+class CreatePlanOutputFormat(BaseModel):
+    plan: InterviewPlan
+    opening_message: str
+
+class NextTurnOutputFormat(BaseModel):
+    interviewer_message: str
+    is_complete: bool
+
 class EvaluationResponse(BaseModel):
     evaluation: Evaluation
     provider: str
