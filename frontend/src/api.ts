@@ -2,6 +2,11 @@ import type { Evaluation, InterviewConfig, Message, Plan, StudyGuideSection } fr
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000/api").replace(/\/$/, "");
 
+export function getRealtimeWsUrl(): string {
+  const wsBase = API_URL.replace(/^http/, "ws");
+  return `${wsBase}/realtime/ws`;
+}
+
 async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 60_000): Promise<Response> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);

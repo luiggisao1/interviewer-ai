@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, getRealtimeWsUrl } from "./api";
 import type { AudioMode, Difficulty, Evaluation, InterviewConfig, Message, Mode, Plan, Role, StudyGuideSection } from "./types";
 import { Topbar } from "./components/layout/Topbar";
 import { EvaluatingOverlay } from "./components/layout/EvaluatingOverlay";
@@ -682,8 +682,7 @@ export default function App() {
     liveVoiceActiveRef.current = true;
 
     try {
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/api/realtime/ws`;
+      const wsUrl = getRealtimeWsUrl();
       const ws = new WebSocket(wsUrl);
       liveSocketRef.current = ws;
 
