@@ -1,4 +1,6 @@
+import json
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -90,6 +92,38 @@ class EvaluationRequest(BaseModel):
     config: InterviewConfig
     plan: InterviewPlan
     transcript: list[Message] = Field(min_length=1, max_length=100)
+
+
+class AnswerPair(BaseModel):
+    number: int
+    question: str
+    candidate_answer: str
+
+
+class EvaluationContext(BaseModel):
+    system_prompt: str
+    payload: dict[str, Any]
+    answer_pairs: list[AnswerPair]
+
+    @property
+    def count(self) -> int:
+        return len(self.answer_pairs)
+
+    @property
+    def payload_json(self) -> str:
+        return json.dumps(self.payload)
+
+
+class LiveSessionUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+
+class LiveSessionResult(BaseModel):
+    transcript: list[Message] = Field(default_factory=list)
+    interviewer_turns: str = ""
+    usage: LiveSessionUsage = Field(default_factory=LiveSessionUsage)
 
 
 class SeniorAnswer(BaseModel):

@@ -1,7 +1,8 @@
 """Evaluation Prompt Benchmark: Baseline vs. Calibrated Prompt.
 
-Compares how Claude evaluates an exemplary senior-level candidate answer
-under the Baseline (legacy) prompt versus the Calibrated prompt.
+Compares how Claude and Gemini evaluate candidate answers under the Baseline
+(legacy) prompt versus the Calibrated prompt across both exemplary senior answers
+(upper-bound calibration) and non-answers/greetings (zero-floor calibration).
 """
 
 import argparse
@@ -66,52 +67,45 @@ EXEMPLARY_SENIOR_ANSWER = (
     " and (4) offload CPU/memory-heavy workloads to Celery/Arq background workers so HTTP worker processes stay lean."
 )
 
+NON_ANSWER_QUESTION = (
+    "Can you walk us through how you design modular and maintainable backend services in Python?"
+)
+NON_ANSWER_CANDIDATE_ANSWER = "Hello, coming to meet you."
 
-async def evaluate_single_run(
-    provider: AnthropicProvider | GeminiProvider,
-    prompt_template: str,
-    payload: dict,
-) -> Evaluation:
-    system_prompt = prompt_template.format(count=len(payload["answer_pairs"]))
-    if isinstance(provider, AnthropicProvider):
-        messages = [
-            {"role": "user", "content": json.dumps(payload)},
-        ]
-        return await provider.call_llm(
-            system_prompt=system_prompt,
-            output_format=Evaluation,
-            max_tokens=8192,
-            messages=messages,  # type: ignore[arg-type]
+
+def build_case_payload(case: str) -> tuple[str, dict]:
+    if case == "non_answer":
+        config = InterviewConfig(
+            role=Role.backend_engineer,
+            mode=InterviewMode.technical,
+            difficulty=Difficulty.senior,
+            duration_minutes=15,
         )
-    return await provider.call_llm(
-        system_prompt=system_prompt,
-        output_format=Evaluation,
-        contents=json.dumps(payload),
-    )
-
-
-async def run_benchmark(
-    runs: int,
-    model: str | None,
-    prompt_choice: str = "both",
-    provider_choice: str = "anthropic",
-) -> None:
-    settings = get_settings()
-
-    if provider_choice == "gemini":
-        api_key = settings.google_api_key
-        if not api_key:
-            logger.error("GOOGLE_API_KEY is not set in backend/.env")
-            sys.exit(1)
-        target_model = model or settings.gemini_model
-        provider: AnthropicProvider | GeminiProvider = GeminiProvider(api_key=api_key, model=target_model)
-    else:
-        api_key = settings.anthropic_api_key
-        if not api_key:
-            logger.error("ANTHROPIC_API_KEY is not set in backend/.env")
-            sys.exit(1)
-        target_model = model or settings.anthropic_model
-        provider = AnthropicProvider(api_key=api_key, model=target_model)
+        plan = InterviewPlan(
+            title="Modular Python Backend Architecture",
+            summary="Clean architecture, domain boundaries, and dependency injection.",
+            focus_areas=["Clean Architecture", "Dependency Injection", "Domain-Driven Design"],
+            questions=[NON_ANSWER_QUESTION],
+            estimated_turns=1,
+        )
+        transcript = [
+            Message(role="interviewer", content=NON_ANSWER_QUESTION),
+            Message(role="candidate", content=NON_ANSWER_CANDIDATE_ANSWER),
+        ]
+        payload = {
+            "study_guide": "# Python Backend Architecture\nModular design, clean architecture, dependency injection.",
+            "config": config.model_dump(mode="json"),
+            "plan": plan.model_dump(mode="json"),
+            "transcript": [m.model_dump(mode="json") for m in transcript],
+            "answer_pairs": [
+                {
+                    "number": 1,
+                    "question": NON_ANSWER_QUESTION,
+                    "candidate_answer": NON_ANSWER_CANDIDATE_ANSWER,
+                }
+            ],
+        }
+        return "Non-Answer / Greeting (Zero-Floor Target: 0%)", payload
 
     config = InterviewConfig(
         role=Role.backend_engineer,
@@ -143,10 +137,43 @@ async def run_benchmark(
             }
         ],
     }
+    return "Exemplary Senior Response (Upper-Bound Target: >= 95%)", payload
 
+
+async def evaluate_single_run(
+    provider: AnthropicProvider | GeminiProvider,
+    prompt_template: str,
+    payload: dict,
+) -> Evaluation:
+    system_prompt = prompt_template.format(count=len(payload["answer_pairs"]))
+    if isinstance(provider, AnthropicProvider):
+        messages = [
+            {"role": "user", "content": json.dumps(payload)},
+        ]
+        return await provider.call_llm(
+            system_prompt=system_prompt,
+            output_format=Evaluation,
+            max_tokens=8192,
+            messages=messages,  # type: ignore[arg-type]
+        )
+    return await provider.call_llm(
+        system_prompt=system_prompt,
+        output_format=Evaluation,
+        contents=json.dumps(payload),
+    )
+
+
+async def run_single_benchmark_case(
+    case_label: str,
+    payload: dict,
+    provider: AnthropicProvider | GeminiProvider,
+    target_model: str,
+    runs: int,
+    prompt_choice: str,
+) -> None:
     print("\n" + "=" * 80)
-    print(f"🔬 BENCHMARK EXPERIMENT: PROMPT={prompt_choice.upper()} | MODEL={target_model}")
-    print(f"Iterations: {runs}")
+    print(f"🔬 CASE: {case_label}")
+    print(f"PROMPT={prompt_choice.upper()} | MODEL={target_model} | RUNS={runs}")
     print("=" * 80 + "\n")
 
     baseline_scores: list[int] = []
@@ -170,7 +197,7 @@ async def run_benchmark(
     calibrated_improvements: list[list[str]] = []
 
     if prompt_choice in ("both", "calibrated"):
-        print("\nRunning Calibrated Prompt (Additive Rubric + Exemplary Calibration)...")
+        print("\nRunning Calibrated Prompt (Gated Additive Rubric + Zero-Floor)...")
         for i in range(runs):
             res = await evaluate_single_run(provider, CALIBRATED_EVALUATION_PROMPT, payload)
             calibrated_scores.append(res.overall_score)
@@ -185,7 +212,6 @@ async def run_benchmark(
                     print(f"  Senior Benchmark Answer: {res.senior_answers[0].senior_answer[:120]}...")
                     print(f"  Why Stronger: {res.senior_answers[0].why_stronger}")
 
-    # Compute Statistics if both ran
     if prompt_choice == "both" and baseline_scores and calibrated_scores:
         base_avg = statistics.mean(baseline_scores)
         base_stdev = statistics.stdev(baseline_scores) if len(baseline_scores) > 1 else 0.0
@@ -198,23 +224,53 @@ async def run_benchmark(
         cal_range = f"{min(calibrated_scores)}% / {max(calibrated_scores)}%"
 
         markdown_report = rf"""
-### 📊 Benchmark Results Summary (Model: `{target_model}`)
+### 📊 Benchmark Summary: {case_label} (Model: `{target_model}`)
 
 | Metric | Baseline Prompt (Old) | Calibrated Prompt (New) | Delta / Impact |
 | :--- | :--- | :--- | :--- |
 | **Mean Score** | **{base_avg:.1f}%** | **{cal_avg:.1f}%** | **{sign}{delta:.1f} pts** |
 | **Score Std Dev ($\sigma$)** | ±{base_stdev:.2f} | ±{cal_stdev:.2f} | {stability} |
-| **Min / Max Score** | {base_range} | {cal_range} | Aligned with Senior Standard |
-
-#### Sample Improvement Feedback Comparison
-
-**Baseline Feedback (Critic Bias):**
-> *"{baseline_improvements[0][0] if baseline_improvements and baseline_improvements[0] else 'N/A'}"*
-
-**Calibrated Feedback (Staff/Principal Horizon):**
-> *"{calibrated_improvements[0][0] if calibrated_improvements and calibrated_improvements[0] else 'N/A'}"*
+| **Min / Max Score** | {base_range} | {cal_range} | Calibration Boundary Met |
 """
-        print("\n" + markdown_report)
+        print(markdown_report)
+
+
+async def run_benchmark(
+    runs: int,
+    model: str | None,
+    prompt_choice: str = "both",
+    provider_choice: str = "anthropic",
+    case_choice: str = "both",
+) -> None:
+    settings = get_settings()
+
+    if provider_choice == "gemini":
+        api_key = settings.google_api_key
+        if not api_key:
+            logger.error("GOOGLE_API_KEY is not set in backend/.env")
+            sys.exit(1)
+        target_model = model or settings.gemini_model
+        provider: AnthropicProvider | GeminiProvider = GeminiProvider(api_key=api_key, model=target_model)
+    else:
+        api_key = settings.anthropic_api_key
+        if not api_key:
+            logger.error("ANTHROPIC_API_KEY is not set in backend/.env")
+            sys.exit(1)
+        target_model = model or settings.anthropic_model
+        provider = AnthropicProvider(api_key=api_key, model=target_model)
+
+    cases_to_run = ["exemplary", "non_answer"] if case_choice == "both" else [case_choice]
+
+    for case_name in cases_to_run:
+        case_label, payload = build_case_payload(case_name)
+        await run_single_benchmark_case(
+            case_label=case_label,
+            payload=payload,
+            provider=provider,
+            target_model=target_model,
+            runs=runs,
+            prompt_choice=prompt_choice,
+        )
 
     if isinstance(provider, AnthropicProvider):
         await provider.client.close()
@@ -241,6 +297,12 @@ def main():
         default="both",
         help="Which prompt to execute (default: both)",
     )
+    parser.add_argument(
+        "--case",
+        choices=["exemplary", "non_answer", "both"],
+        default="both",
+        help="Test case to evaluate: exemplary, non_answer, or both (default: both)",
+    )
     args = parser.parse_args()
 
     asyncio.run(
@@ -249,6 +311,7 @@ def main():
             model=args.model,
             prompt_choice=args.prompt,
             provider_choice=args.provider,
+            case_choice=args.case,
         )
     )
 

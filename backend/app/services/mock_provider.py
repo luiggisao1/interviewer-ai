@@ -98,32 +98,29 @@ class MockProvider(AIProvider):
         completeness = min(1.0, len(answers) / max(1, request.plan.estimated_turns))
         depth = min(1.0, word_count / max(40, len(answers) * 45))
         score = round(45 + completeness * 30 + depth * 25)
+        ctx = self.prepare_evaluation_prompt(request)
         senior_answers: list[SeniorAnswer] = []
-        last_question = ""
-        for message in request.transcript:
-            if message.role == "interviewer":
-                last_question = message.content
-            elif message.role == "candidate":
-                focus = request.plan.focus_areas[
-                    min(len(senior_answers), len(request.plan.focus_areas) - 1)
-                ]
-                senior_answers.append(
-                    SeniorAnswer(
-                        question=last_question or "Interview question",
-                        candidate_answer=message.content,
-                        senior_answer=(
-                            f"I would approach {focus} by first clarifying the requirements, scale, and failure modes. "
-                            "I would choose the simplest maintainable design that meets those constraints, "
-                            "validate inputs and edge cases, and add structured logging, tests, and operational "
-                            "metrics. I would then explain the alternatives I considered, the trade-offs behind "
-                            "my choice, and how I would verify the outcome in production."
-                        ),
-                        why_stronger=(
-                            "It frames the problem, explains a decision, discusses trade-offs, and includes "
-                            "production validation rather than only defining the concept."
-                        ),
-                    )
+        for pair in ctx.answer_pairs:
+            focus = request.plan.focus_areas[
+                min(len(senior_answers), len(request.plan.focus_areas) - 1)
+            ]
+            senior_answers.append(
+                SeniorAnswer(
+                    question=pair.question,
+                    candidate_answer=pair.candidate_answer,
+                    senior_answer=(
+                        f"I would approach {focus} by first clarifying the requirements, scale, and failure modes. "
+                        "I would choose the simplest maintainable design that meets those constraints, "
+                        "validate inputs and edge cases, and add structured logging, tests, and operational "
+                        "metrics. I would then explain the alternatives I considered, the trade-offs behind "
+                        "my choice, and how I would verify the outcome in production."
+                    ),
+                    why_stronger=(
+                        "It frames the problem, explains a decision, discusses trade-offs, and includes "
+                        "production validation rather than only defining the concept."
+                    ),
                 )
+            )
 
         return Evaluation(
             overall_score=score,

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
-from app.routers import api
+from app.routers import api, realtime
 from app.services.base import AIProvider
 from app.services.factory import create_provider
 
@@ -26,3 +26,4 @@ def get_provider(config: Settings = Depends(get_settings)) -> AIProvider:
 
 
 app.include_router(api.router)
+app.include_router(realtime.router)

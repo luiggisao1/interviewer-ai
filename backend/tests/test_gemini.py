@@ -1,3 +1,5 @@
+import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -221,3 +223,86 @@ async def test_gemini_empty_response_raises_error(plan_request: PlanRequest) -> 
 
     assert exc_info.value.provider == "gemini"
     assert "empty parsed output" in exc_info.value.message
+
+
+def test_gemini_supports_realtime_audio() -> None:
+    provider = GeminiProvider(api_key="test-key")
+    assert provider.supports_realtime_audio is True
+
+
+def test_mock_provider_does_not_support_realtime_audio() -> None:
+    from app.services.mock_provider import MockProvider
+
+    provider = MockProvider()
+    assert provider.supports_realtime_audio is False
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_raises_not_implemented_for_realtime() -> None:
+    from app.services.mock_provider import MockProvider
+
+    provider = MockProvider()
+    plan = InterviewPlan(
+        title="T", summary="S", focus_areas=["A"], questions=["Q"], estimated_turns=1
+    )
+    config = InterviewConfig(
+        role=Role.software_engineer,
+        mode=InterviewMode.technical,
+        difficulty=Difficulty.senior,
+        duration_minutes=10,
+    )
+    with pytest.raises(NotImplementedError):
+        await provider.handle_realtime_audio_session(None, plan, config, "guide")
+
+
+@pytest.mark.asyncio
+async def test_gemini_handle_realtime_audio_session() -> None:
+    provider = GeminiProvider(api_key="test-key")
+
+    mock_ws = MagicMock()
+    mock_ws.receive = AsyncMock(return_value={"text": json.dumps({"type": "end_session"})})
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+
+    mock_session = AsyncMock()
+    mock_response = MagicMock()
+    mock_response.usage_metadata = MagicMock(prompt_token_count=150, response_token_count=40, total_token_count=190)
+    mock_response.server_content = MagicMock()
+    mock_response.server_content.interrupted = False
+    mock_response.server_content.model_turn = MagicMock()
+    mock_part = MagicMock()
+    mock_part.inline_data = None
+    mock_part.text = "Hello candidate, let us start."
+    mock_response.server_content.model_turn.parts = [mock_part]
+    mock_response.server_content.output_transcription = None
+    mock_response.server_content.interim_input_transcription = None
+    mock_response.server_content.input_transcription = None
+    mock_response.server_content.turn_complete = True
+
+    async def mock_receive_gen():
+        yield mock_response
+        await asyncio.sleep(0.01)
+
+    mock_session.receive = mock_receive_gen
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_session
+    mock_connect_cm.__aexit__.return_value = None
+
+    provider.client.aio.live.connect = MagicMock(return_value=mock_connect_cm)
+
+    plan = InterviewPlan(
+        title="T", summary="S", focus_areas=["A"], questions=["Q1"], estimated_turns=1
+    )
+    config = InterviewConfig(
+        role=Role.software_engineer,
+        mode=InterviewMode.technical,
+        difficulty=Difficulty.senior,
+        duration_minutes=10,
+    )
+    transcript = await provider.handle_realtime_audio_session(mock_ws, plan, config, "guide")
+    assert len(transcript) == 1
+    assert transcript[0].role == "interviewer"
+    assert transcript[0].content == "Hello candidate, let us start."
+
+

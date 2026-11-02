@@ -20,7 +20,6 @@ from app.schemas import (
     PlanRequest,
 )
 from app.services.base import AIProvider
-from app.services.prompts import build_evaluation_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -125,38 +124,20 @@ class AnthropicProvider(AIProvider):
         return result.interviewer_message, result.is_complete
 
     async def evaluate(self, request: EvaluationRequest) -> Evaluation:
-        answer_pairs: list[dict[str, str | int]] = []
-        last_question = "Interview question"
-        for message in request.transcript:
-            if message.role == "interviewer":
-                last_question = message.content
-            elif message.role == "candidate":
-                answer_pairs.append(
-                    {
-                        "number": len(answer_pairs) + 1,
-                        "question": last_question,
-                        "candidate_answer": message.content,
-                    }
-                )
-
-        payload = request.model_dump(mode="json")
-        payload["answer_pairs"] = answer_pairs
-        count = len(answer_pairs)
-        system = build_evaluation_prompt(count=count)
-
+        ctx = self.prepare_evaluation_prompt(request)
         messages: list[BetaMessageParam] = [
-            BetaUserMessageParam(role="user", content=json.dumps(payload)),
+            BetaUserMessageParam(role="user", content=ctx.payload_json),
         ]
 
         result = await self.call_llm(
-            system_prompt=system,
+            system_prompt=ctx.system_prompt,
             output_format=Evaluation,
             max_tokens=8192,
             messages=messages,
         )
 
-        if 1 <= result.overall_score <= 10 and count > 0:
-            if any(len(str(p.get("candidate_answer", "")).split()) >= 3 for p in answer_pairs):
+        if 1 <= result.overall_score <= 10 and ctx.count > 0:
+            if any(len(p.candidate_answer.split()) >= 3 for p in ctx.answer_pairs):
                 result.overall_score = min(100, result.overall_score * 10)
 
         return result

@@ -10,6 +10,7 @@ node_modules/
 dist/
 .npm-cache/
 frontend/.env
+*.tsbuildinfo
 
 # Editors / OS
 .DS_Store

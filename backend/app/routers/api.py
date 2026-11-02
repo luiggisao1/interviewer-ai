@@ -21,12 +21,16 @@ logger = logging.getLogger(__name__)
 
 @router.get("/health")
 async def health(config: Settings = Depends(get_settings)) -> dict[str, str]:
-    return {"status": "ok", "provider": config.resolved_provider}
+    return {"status": "ok", "provider": config.resolved_provider, "recruiter_name": config.recruiter_name}
 
 
 @router.get("/providers")
 async def get_providers(config: Settings = Depends(get_settings)):
-    return {"active": config.resolved_provider, "available": config.available_providers}
+    return {
+        "active": config.resolved_provider,
+        "available": config.available_providers,
+        "recruiter_name": config.recruiter_name,
+    }
 
 
 @router.get("/study-guide/sections", response_model=list[StudyGuideSection])

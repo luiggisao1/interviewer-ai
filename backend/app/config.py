@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-sonnet-20241022"
     google_api_key: str | None = Field(default=None, repr=False)
     gemini_model: str = "gemini-2.5-flash"
-    gemini_realtime_model: str = "gpt-realtime-2.1"
+    gemini_realtime_model: str = "gemini-3.8-flash"
+    recruiter_name: str = "Iris"
     frontend_origins: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(

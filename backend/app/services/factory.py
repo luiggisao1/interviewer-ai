@@ -10,5 +10,10 @@ def create_provider(settings: Settings, provider_override: str | None = None) ->
     if provider in ("anthropic", "claude") and settings.anthropic_api_key:
         return AnthropicProvider(settings.anthropic_api_key, settings.anthropic_model)
     if provider in ("gemini", "google") and settings.google_api_key:
-        return GeminiProvider(settings.google_api_key, settings.gemini_model)
+        return GeminiProvider(
+            settings.google_api_key,
+            model=settings.gemini_model,
+            live_model=settings.gemini_realtime_model,
+            recruiter_name=settings.recruiter_name,
+        )
     return MockProvider()

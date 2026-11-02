@@ -28,7 +28,7 @@ GUIDE = (
 def test_health_uses_mock_without_key() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "provider": "mock"}
+    assert response.json() == {"status": "ok", "provider": "mock", "recruiter_name": "Iris"}
 
 
 def test_study_guide_sections_start_with_python() -> None:
@@ -114,3 +114,31 @@ def test_evaluation_senior_answer_defaults() -> None:
     assert sa.candidate_answer == ""
     assert sa.senior_answer == ""
     assert sa.why_stronger == ""
+
+
+def test_single_turn_early_evaluation_no_duplication() -> None:
+    plan = {
+        "title": "Senior Python Engineer Practice",
+        "summary": "Deep dive into architecture",
+        "focus_areas": ["Concurrency", "Memory", "API Design", "Distributed Systems"],
+        "questions": ["Q1: Concurrency", "Q2: Memory", "Q3: API Design", "Q4: Distributed Systems"],
+        "estimated_turns": 4,
+    }
+    transcript = [
+        {"role": "interviewer", "content": "Q1: Concurrency"},
+        {"role": "candidate", "content": "I use asyncio tasks and queues for concurrency."},
+    ]
+    response = client.post(
+        "/api/evaluation",
+        json={
+            "study_guide": GUIDE,
+            "config": CONFIG,
+            "plan": plan,
+            "transcript": transcript,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()["evaluation"]
+    assert len(body["senior_answers"]) == 1
+    assert body["senior_answers"][0]["question"] == "Q1: Concurrency"
+    assert body["senior_answers"][0]["candidate_answer"] == "I use asyncio tasks and queues for concurrency."
