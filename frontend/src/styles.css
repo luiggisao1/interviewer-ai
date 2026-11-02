@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    @apply bg-[#060A14] text-slate-200 antialiased;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-image: 
+      radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.06) 0%, transparent 60%),
+      radial-gradient(circle at 90% 40%, rgba(56, 189, 248, 0.03) 0%, transparent 40%);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+/* Equalizer and spinner keyframe animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes eqBounce {
+  0%, 100% { height: 10px; opacity: 0.4; }
+  50% { height: 48px; opacity: 1; }
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.4);
+}
