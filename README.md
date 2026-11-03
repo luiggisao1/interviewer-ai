@@ -1,8 +1,32 @@
 # Interviewer AI
 
-A fullstack, production-grade AI interview preparation platform. Paste any technical study guide, configure an interview role and difficulty, practice in a turn-by-turn conversational audio/chat session, and receive rubric-based evaluations with Senior benchmark answers.
+<p align="center">
+  <strong>Real-Time Conversational Voice AI Technical Interviewer & Calibrated Benchmarking Harness</strong><br>
+  Engineered with FastAPI WebSockets, Gemini Live real-time audio streaming, React 19 + TypeScript, and swappable LLM providers (Google Gemini, Anthropic Claude, OpenAI).
+</p>
 
-Architected with the **Strategy & Factory design patterns**, enabling swappable AI providers (**Anthropic Claude**, **OpenAI**, **Google Gemini**, and a **Deterministic Mock Provider**) with LangSmith observability tracing.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/FastAPI-REST%20%26%20WebSockets-009688?style=flat&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Package%20Manager-Astral%20uv-DE5FE9?style=flat" alt="Astral uv" />
+  <img src="https://img.shields.io/badge/React-19%20%2B%20TypeScript-61DAFB?style=flat&logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/Voice-Gemini%20Live%20Realtime-4285F4?style=flat&logo=google&logoColor=white" alt="Gemini Live" />
+  <img src="https://img.shields.io/badge/LLMs-Gemini%20%7C%20Claude%20%7C%20OpenAI-8A2BE2?style=flat" alt="LLMs" />
+  <img src="https://img.shields.io/badge/Observability-LangSmith-FF4F00?style=flat" alt="LangSmith" />
+  <img src="https://img.shields.io/badge/Tests-pytest%20100%25%20Offline-0A9EDC?style=flat&logo=pytest&logoColor=white" alt="pytest" />
+</p>
+
+> 💡 **TL;DR:** **Interviewer AI** is a production-grade interview simulator that pairs real-time, bidirectional conversational audio streaming via Gemini Live WebSockets (with native barge-in interruption) with an additive rubric calibration harness that eliminates LLM critic bias and benchmarks models from Flash-Lite to Opus.
+
+---
+
+## 🎯 Motivation
+
+Technical interview preparation typically relies on static question banks or text-only chatbots that fail to simulate real conversational pressure, pacing, and interruption dynamics. Furthermore, when employing LLMs as evaluators, they suffer from severe **critic bias** (inventing superficial nitpicks on senior-level answers to fulfill critique constraints) and **score boundary aversion** (compressing grades into the 75%–85% band).
+
+I engineered **Interviewer AI** to bridge both gaps:
+1. **Real-Time Conversational Pressure**: Low-latency, bidirectional audio streaming via Gemini Live WebSockets with native barge-in interruption handling.
+2. **Bias-Free Evaluation**: An additive rubric calibration harness that eliminates critic bias, shifts feedback to Staff-level scaling frontiers, and benchmarks models from Flash-Lite to Opus.
 
 ---
 
@@ -86,9 +110,9 @@ uv run python scripts/benchmark_eval.py --provider anthropic --prompt both --run
 ```mermaid
 flowchart TD
     subgraph Client ["Frontend (React + Vite + TypeScript)"]
-        UI["Interview Screen & Bento Debrief"]
+        UI["Interview Screen & Evaluation Debrief"]
         WebSpeech["Web Speech API (STT / TTS)"]
-        GeminiWS["WebSocket 16kHz PCM Audio Stream"]
+        GeminiWS["WebSocket Realtime Audio Stream"]
         WebRTC["WebRTC Voice Streaming"]
     end
 
@@ -149,20 +173,20 @@ sequenceDiagram
     WS-->>Browser: Session started event
     WS->>Gemini: Send kickoff prompt (end_of_turn=True)
     Gemini-->>WS: Stream audio chunks and transcription
-    WS-->>Browser: Binary PCM chunks and transcript chunk
+    WS-->>Browser: Binary audio chunks and transcript chunk
     Browser->>Candidate: AudioBufferSourceNode playback
 
     Note over Candidate,Gemini: 2. Realtime Candidate Speech Streaming
     Candidate->>Browser: Speaks response
-    Browser->>Browser: ScriptProcessor downsamples to 16kHz Int16 PCM
-    Browser->>WS: Binary PCM chunks (4096 samples)
-    WS->>Gemini: Stream realtime audio (16kHz PCM)
+    Browser->>Browser: Downsamples audio for streaming
+    Browser->>WS: Binary audio chunks (4096 samples)
+    WS->>Gemini: Stream realtime audio
     Gemini-->>WS: Interim input transcription
     WS-->>Browser: Candidate transcript chunk event
 
     Note over Candidate,Gemini: 3. Interruption Handling (Barge-in)
     Candidate->>Browser: Candidate interrupts interviewer mid-sentence
-    Browser->>WS: Streams candidate PCM
+    Browser->>WS: Streams candidate audio
     WS->>Gemini: Realtime audio packet
     Gemini-->>WS: Turn interrupted notification
     WS-->>Browser: Interrupted event
@@ -179,8 +203,8 @@ sequenceDiagram
 ### Key Technical Characteristics
 
 1. **Audio Protocol & DSP Pipeline**:
-   - **Sample Rate**: 16,000 Hz, 1 channel (mono), 16-bit linear PCM (`Int16Array`).
-   - **Chunk Size**: 4,096 samples (~256 ms per buffer) captured via `AudioContext` and `ScriptProcessorNode`.
+   - **Streaming Buffer**: Configured for low-latency audio capture via Web Audio API (`AudioContext` and `ScriptProcessorNode`).
+   - **Chunk Size**: 4,096 samples (~256 ms per buffer) with automated downsampling.
    - **Voice Persona**: Configured with Google's expressive `Aoede` voice preset.
 2. **True Barge-In (Interruption Handling)**:
    - When the candidate begins speaking while the interviewer is talking, Gemini Live signals `server_content.interrupted`.
@@ -201,7 +225,7 @@ sequenceDiagram
 - **Multi-Provider Strategy Pattern**: Seamlessly switch between Google Gemini, Anthropic Claude, OpenAI, or Mock via `.env` or per-request overrides.
 - **Gemini Live Realtime Audio**: Bidirectional, sub-second latency conversational voice streaming over WebSockets with barge-in interruption handling and live transcript synchronization.
 - **Claude Free Web Voice**: In-browser speech recognition (Web Speech API) and speech synthesis with zero additional API audio costs.
-- **Bento Debrief Evaluation UI**: Comprehensive scorecard with additive rubric grading, Staff-level scaling suggestions, and Senior benchmark comparison answers.
+- **Evaluation Debrief UI**: Comprehensive scorecard with additive rubric grading, Staff-level scaling suggestions, and Senior benchmark comparison answers.
 - **LangSmith Tracing**: Full LLM lifecycle observability, token accounting, and prompt debugging.
 - **100% Offline Test Suite**: Comprehensive pytest suite leveraging `AsyncMock` to verify schemas, factories, and provider error states with zero external API calls.
 
