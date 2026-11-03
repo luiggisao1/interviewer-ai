@@ -2,7 +2,20 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-STUDY_GUIDE_PATH = Path(__file__).resolve().parents[2] / "study_guide.md"
+
+def get_study_guide_path() -> Path | None:
+    candidate_paths = [
+        Path(__file__).resolve().parent / "study_guide.md",
+        Path(__file__).resolve().parents[1] / "study_guide.md",
+        Path(__file__).resolve().parents[2] / "study_guide.md",
+        Path.cwd() / "study_guide.md",
+    ]
+    for p in candidate_paths:
+        if p.is_file():
+            return p
+    return None
+
+
 SECTION_TITLES = (
     "Python",
     "SQL",
@@ -24,10 +37,11 @@ def _section_id(title: str) -> str:
 
 
 def load_study_guide_sections() -> list[StudyGuideSection]:
-    if not STUDY_GUIDE_PATH.is_file():
+    guide_path = get_study_guide_path()
+    if not guide_path or not guide_path.is_file():
         return []
 
-    text = STUDY_GUIDE_PATH.read_text(encoding="utf-8")
+    text = guide_path.read_text(encoding="utf-8")
     positions: list[tuple[int, str]] = []
     for title in SECTION_TITLES:
         marker = f"\n{title}\n"

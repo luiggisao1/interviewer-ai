@@ -142,3 +142,10 @@ def test_single_turn_early_evaluation_no_duplication() -> None:
     assert len(body["senior_answers"]) == 1
     assert body["senior_answers"][0]["question"] == "Q1: Concurrency"
     assert body["senior_answers"][0]["candidate_answer"] == "I use asyncio tasks and queues for concurrency."
+
+
+def test_cors_origins_strips_trailing_slashes() -> None:
+    from app.config import Settings
+
+    s = Settings(frontend_origins="https://inai.duiggi.dev/,http://localhost:5173")
+    assert s.cors_origins == ["https://inai.duiggi.dev", "http://localhost:5173"]
