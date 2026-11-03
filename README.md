@@ -140,39 +140,40 @@ sequenceDiagram
     participant Browser as React Client (Web Audio API)
     participant WS as FastAPI WebSocket (/api/realtime/ws)
     participant Gemini as Google GenAI Live API (Aoede Voice)
+    participant REST as FastAPI REST API (/api/evaluation)
 
-    Note over Candidate,Gemini: 1. Session Handshake & Kickoff
-    Browser->>WS: Connect WebSocket & send {config, plan, study_guide}
-    WS->>Gemini: session.connect(model="gemini-3.8-flash", voice="Aoede")
+    Note over Candidate,Gemini: 1. Session Handshake and Kickoff
+    Browser->>WS: Connect WebSocket with session config and plan
+    WS->>Gemini: Connect live session (gemini-3.8-flash, Aoede voice)
     Gemini-->>WS: Session established
-    WS-->>Browser: {"type": "session_started"}
-    WS->>Gemini: session.send(kickoff_prompt, end_of_turn=True)
-    Gemini-->>WS: Audio chunks + output transcription
-    WS-->>Browser: Binary PCM chunks + {"type": "transcript_chunk"}
+    WS-->>Browser: Session started event
+    WS->>Gemini: Send kickoff prompt (end_of_turn=True)
+    Gemini-->>WS: Stream audio chunks and transcription
+    WS-->>Browser: Binary PCM chunks and transcript chunk
     Browser->>Candidate: AudioBufferSourceNode playback
 
     Note over Candidate,Gemini: 2. Realtime Candidate Speech Streaming
     Candidate->>Browser: Speaks response
     Browser->>Browser: ScriptProcessor downsamples to 16kHz Int16 PCM
-    Browser->>WS: Raw binary PCM chunks (4096 samples)
-    WS->>Gemini: session.send_realtime_input(audio/pcm;rate=16000)
-    Gemini-->>WS: server_content.interim_input_transcription
-    WS-->>Browser: {"type": "transcript_chunk", "role": "candidate"}
+    Browser->>WS: Binary PCM chunks (4096 samples)
+    WS->>Gemini: Stream realtime audio (16kHz PCM)
+    Gemini-->>WS: Interim input transcription
+    WS-->>Browser: Candidate transcript chunk event
 
     Note over Candidate,Gemini: 3. Interruption Handling (Barge-in)
     Candidate->>Browser: Candidate interrupts interviewer mid-sentence
     Browser->>WS: Streams candidate PCM
     WS->>Gemini: Realtime audio packet
-    Gemini-->>WS: server_content.interrupted = True
-    WS-->>Browser: {"type": "interrupted"}
-    Browser->>Browser: Instantly stop active AudioBufferSources & clear queue
+    Gemini-->>WS: Turn interrupted notification
+    WS-->>Browser: Interrupted event
+    Browser->>Browser: Instantly stop active AudioBuffers and clear queue
 
-    Note over Candidate,Gemini: 4. Graceful Teardown & Evaluation Handoff
-    Candidate->>Browser: Clicks "End & Evaluate"
-    Browser->>WS: {"type": "end_session"} & ws.close()
-    WS->>WS: Cancel & await background tasks with asyncio.gather
-    WS-->>Browser: {"type": "session_completed", transcript}
-    Browser->>Router: POST /api/evaluation with deduplicated transcript
+    Note over Candidate,Gemini: 4. Graceful Teardown and Evaluation Handoff
+    Candidate->>Browser: Clicks "End and Evaluate"
+    Browser->>WS: Send end_session and close socket
+    WS->>WS: Await background tasks (asyncio.gather)
+    WS-->>Browser: Session completed event with final transcript
+    Browser->>REST: POST /api/evaluation with deduplicated transcript
 ```
 
 ### Key Technical Characteristics
