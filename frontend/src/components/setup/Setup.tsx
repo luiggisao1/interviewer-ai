@@ -68,7 +68,7 @@ function getEngineLabel(engine: string): string {
     case "anthropic":
       return "Anthropic Claude (Claude 3.5 Sonnet)";
     case "openai":
-      return "OpenAI (GPT-4o / Realtime Audio)";
+      return "OpenAI (GPT-4o / GPT-4o-mini)";
     case "mock":
       return "Deterministic Mock Engine (Testing)";
     default:
