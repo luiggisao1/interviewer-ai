@@ -25,3 +25,18 @@ build/
 dist/
 wheels/
 *.egg-info
+
+# Documentation & drafts
+docs/*
+!docs/adr/
+docs/screenshots/*
+
+# AGY Dev Harness: Local Agent Files
+.agents/
+.gemini/
+GEMINI.md
+GEMINI.local.md
+tasks/
+memory/
+scripts/safety_guard.py
+scripts/tdd-check.sh

@@ -1,10 +1,11 @@
 import json
 import logging
-from typing import Any, cast
+from typing import cast
 
 import openai
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 from pydantic import BaseModel
 
 from app.exceptions import LLMProviderError
@@ -40,9 +41,10 @@ class OpenAIProvider(AIProvider):
         self,
         system_prompt: str,
         output_format: type[T],
-        messages: list[dict[str, Any]],
+        messages: list[ChatCompletionUserMessageParam],
     ) -> T:
-        full_messages = [{"role": "system", "content": system_prompt}, *messages]
+
+        full_messages = [ChatCompletionSystemMessageParam(role="system", content=system_prompt), *messages]
         try:
             response = await self.client.beta.chat.completions.parse(
                 model=self.model,
@@ -109,7 +111,7 @@ class OpenAIProvider(AIProvider):
 
     async def create_plan(self, request: PlanRequest) -> tuple[InterviewPlan, str]:
         messages = [
-            {"role": "user", "content": json.dumps(request.model_dump(mode="json"))},
+            ChatCompletionUserMessageParam(content=json.dumps(request.model_dump(mode="json")), role="user"),
         ]
         result = await self.call_llm(
             self.create_plan_system_prompt,
@@ -120,7 +122,7 @@ class OpenAIProvider(AIProvider):
 
     async def next_turn(self, request: NextTurnRequest) -> tuple[str, bool]:
         messages = [
-            {"role": "user", "content": json.dumps(request.model_dump(mode="json"))},
+            ChatCompletionUserMessageParam(content=json.dumps(request.model_dump(mode="json")), role="user"),
         ]
         result = await self.call_llm(
             self.next_turn_system_prompt,
@@ -132,7 +134,7 @@ class OpenAIProvider(AIProvider):
     async def evaluate(self, request: EvaluationRequest) -> Evaluation:
         ctx = self.prepare_evaluation_prompt(request)
         messages = [
-            {"role": "user", "content": ctx.payload_json},
+            ChatCompletionUserMessageParam(content=ctx.payload_json, role="user"),
         ]
         result = await self.call_llm(
             system_prompt=ctx.system_prompt,
