@@ -11,6 +11,16 @@ from langsmith.schemas import ExtractedUsageMetadata
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
+from openai.types.realtime import (
+    AudioTranscriptionParam,
+    RealtimeAudioConfigInputParam,
+    RealtimeAudioConfigOutputParam,
+    RealtimeAudioConfigParam,
+    RealtimeResponseCreateParamsParam,
+    RealtimeSessionCreateRequestParam,
+)
+from openai.types.realtime.realtime_audio_formats_param import AudioPCM
+from openai.types.realtime.realtime_audio_input_turn_detection_param import ServerVad
 from pydantic import BaseModel
 
 from app.exceptions import LLMProviderError
@@ -97,29 +107,29 @@ class OpenAIProvider(AIProvider):
         async def _run_live_session(kickoff_prompt: str) -> LiveSessionResult:
             nonlocal token_usage
             async with self.client.realtime.connect(model=self.realtime_model) as connection:
-                await connection.session.update(
-                    session={
-                        "type": "realtime",
-                        "instructions": instructions,
-                        "output_modalities": ["audio"],
-                        "audio": {
-                            "input": {
-                                "format": {"type": "audio/pcm", "rate": 24000},
-                                "transcription": {"model": "gpt-4o-mini-transcribe"},
-                                "turn_detection": {
-                                    "type": "server_vad",
-                                    "create_response": True,
-                                    "interrupt_response": True,
-                                    "silence_duration_ms": 600,
-                                },
-                            },
-                            "output": {
-                                "format": {"type": "audio/pcm", "rate": 24000},
-                                "voice": "marin",
-                            },
-                        },
-                    }
+                pcm_format = AudioPCM(type="audio/pcm", rate=24000)
+                session_config = RealtimeSessionCreateRequestParam(
+                    type="realtime",
+                    instructions=instructions,
+                    output_modalities=["audio"],
+                    audio=RealtimeAudioConfigParam(
+                        input=RealtimeAudioConfigInputParam(
+                            format=pcm_format,
+                            transcription=AudioTranscriptionParam(model="gpt-4o-mini-transcribe"),
+                            turn_detection=ServerVad(
+                                type="server_vad",
+                                create_response=True,
+                                interrupt_response=True,
+                                silence_duration_ms=600,
+                            ),
+                        ),
+                        output=RealtimeAudioConfigOutputParam(
+                            format=pcm_format,
+                            voice="marin",
+                        ),
+                    ),
                 )
+                await connection.session.update(session=session_config)
 
                 await websocket.send_json(
                     {
@@ -130,7 +140,7 @@ class OpenAIProvider(AIProvider):
                 )
 
                 await connection.response.create(
-                    response={"instructions": kickoff_prompt}
+                    response=RealtimeResponseCreateParamsParam(instructions=kickoff_prompt)
                 )
 
                 async def receive_from_openai() -> None:
