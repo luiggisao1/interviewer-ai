@@ -4,7 +4,13 @@ import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.config import Settings, get_settings
-from app.schemas import InterviewConfig, InterviewPlan
+from app.schemas import (
+    InterviewConfig,
+    InterviewPlan,
+    RealtimeError,
+    RealtimeSessionCompleted,
+    send_realtime_event,
+)
 from app.services.factory import create_provider
 
 router = APIRouter(prefix="/api/realtime", tags=["realtime"])
@@ -25,10 +31,10 @@ async def realtime_audio_websocket(
         provider = create_provider(settings, provider_name)
 
         if not provider.supports_realtime_audio:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Realtime voice streaming is not supported by {provider.name}.",
-            })
+            await send_realtime_event(
+                websocket,
+                RealtimeError(message=f"Realtime voice streaming is not supported by {provider.name}."),
+            )
             await websocket.close(code=1008)
             return
 
@@ -44,10 +50,10 @@ async def realtime_audio_websocket(
         )
 
         try:
-            await websocket.send_json({
-                "type": "session_completed",
-                "transcript": [m.model_dump(mode="json") for m in transcript],
-            })
+            await send_realtime_event(
+                websocket,
+                RealtimeSessionCompleted(transcript=transcript),
+            )
             await websocket.close(code=1000)
         except (RuntimeError, WebSocketDisconnect):
             pass
@@ -57,7 +63,7 @@ async def realtime_audio_websocket(
     except Exception as exc:
         logger.exception("Realtime websocket exception: %s", exc)
         try:
-            await websocket.send_json({"type": "error", "message": str(exc)})
+            await send_realtime_event(websocket, RealtimeError(message=str(exc)))
             await websocket.close(code=1011)
         except RuntimeError:
             pass

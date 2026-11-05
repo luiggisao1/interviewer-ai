@@ -3,11 +3,11 @@ import base64
 import json
 import logging
 import os
-from typing import Any, cast
+from typing import cast
 
 import certifi
 import openai
-from fastapi import WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
@@ -30,58 +30,21 @@ from app.schemas import (
     EvaluationRequest,
     InterviewConfig,
     InterviewPlan,
-    LiveSessionResult,
-    LiveSessionUsage,
     Message,
     NextTurnOutputFormat,
     NextTurnRequest,
     PlanRequest,
+    RealtimeError,
+    RealtimeInterrupted,
+    RealtimeSessionStarted,
+    RealtimeTranscriptChunk,
+    RealtimeTranscriptFinal,
     Role,
+    send_realtime_event,
 )
 from app.services.base import AIProvider
 
 logger = logging.getLogger(__name__)
-
-
-def compute_openai_realtime_cost(
-    model: str,
-    *,
-    input_text_tokens: int = 0,
-    input_audio_tokens: int = 0,
-    input_cached_text_tokens: int = 0,
-    input_cached_audio_tokens: int = 0,
-    output_text_tokens: int = 0,
-    output_audio_tokens: int = 0,
-) -> tuple[float, float, float]:
-    """Compute (input_cost, output_cost, total_cost) for OpenAI Realtime sessions."""
-    is_mini = "mini" in model.lower()
-    if is_mini:
-        rate_text_in = 0.60 / 1_000_000
-        rate_text_cached = 0.30 / 1_000_000
-        rate_audio_in = 10.00 / 1_000_000
-        rate_audio_cached = 2.50 / 1_000_000
-        rate_text_out = 2.40 / 1_000_000
-        rate_audio_out = 20.00 / 1_000_000
-    else:
-        rate_text_in = 5.00 / 1_000_000
-        rate_text_cached = 2.50 / 1_000_000
-        rate_audio_in = 40.00 / 1_000_000
-        rate_audio_cached = 10.00 / 1_000_000
-        rate_text_out = 20.00 / 1_000_000
-        rate_audio_out = 80.00 / 1_000_000
-
-    input_cost = (
-        (input_text_tokens * rate_text_in)
-        + (input_cached_text_tokens * rate_text_cached)
-        + (input_audio_tokens * rate_audio_in)
-        + (input_cached_audio_tokens * rate_audio_cached)
-    )
-    output_cost = (
-        (output_text_tokens * rate_text_out)
-        + (output_audio_tokens * rate_audio_out)
-    )
-    total_cost = input_cost + output_cost
-    return round(input_cost, 6), round(output_cost, 6), round(total_cost, 6)
 
 
 class OpenAIProvider(AIProvider):
@@ -106,7 +69,7 @@ class OpenAIProvider(AIProvider):
 
     async def handle_realtime_audio_session(
         self,
-        websocket: Any,
+        websocket: WebSocket,
         plan: InterviewPlan,
         config: InterviewConfig,
         study_guide: str,
@@ -139,21 +102,8 @@ class OpenAIProvider(AIProvider):
             f"Please start the interview now by introducing yourself briefly as {self.recruiter_name} "
             "and asking the first question."
         )
-        token_usage: dict[str, int] = {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "input_text_tokens": 0,
-            "input_audio_tokens": 0,
-            "input_cached_tokens": 0,
-            "input_cached_text_tokens": 0,
-            "input_cached_audio_tokens": 0,
-            "output_text_tokens": 0,
-            "output_audio_tokens": 0,
-        }
 
-        async def _run_live_session(kickoff_prompt: str) -> LiveSessionResult:
-            nonlocal token_usage
+        async def _run_live_session(kickoff_prompt: str) -> list[Message]:
             async with self.client.realtime.connect(model=self.realtime_model) as connection:
                 pcm_format = AudioPCM(type="audio/pcm", rate=24000)
                 session_config = RealtimeSessionCreateRequestParam(
@@ -179,12 +129,12 @@ class OpenAIProvider(AIProvider):
                 )
                 await connection.session.update(session=session_config)
 
-                await websocket.send_json(
-                    {
-                        "type": "session_started",
-                        "provider": self.name,
-                        "model": self.realtime_model,
-                    }
+                await send_realtime_event(
+                    websocket,
+                    RealtimeSessionStarted(
+                        provider=self.name,
+                        model=self.realtime_model,
+                    ),
                 )
 
                 await connection.response.create(
@@ -197,7 +147,7 @@ class OpenAIProvider(AIProvider):
                             event_type = getattr(event, "type", None)
 
                             if event_type == "input_audio_buffer.speech_started":
-                                await websocket.send_json({"type": "interrupted"})
+                                await send_realtime_event(websocket, RealtimeInterrupted())
                                 current_interviewer_text.clear()
 
                             elif event_type in ("response.output_audio.delta", "response.audio.delta"):
@@ -214,12 +164,12 @@ class OpenAIProvider(AIProvider):
                                 if isinstance(delta, str) and delta:
                                     current_interviewer_text.append(delta)
                                     streaming_text = "".join(current_interviewer_text).strip()
-                                    await websocket.send_json(
-                                        {
-                                            "type": "transcript_chunk",
-                                            "role": "interviewer",
-                                            "content": streaming_text,
-                                        }
+                                    await send_realtime_event(
+                                        websocket,
+                                        RealtimeTranscriptChunk(
+                                            role="interviewer",
+                                            content=streaming_text,
+                                        ),
                                     )
 
                             elif event_type in (
@@ -234,24 +184,24 @@ class OpenAIProvider(AIProvider):
                                 ).strip()
                                 if final_text:
                                     transcript.append(Message(role="interviewer", content=final_text))
-                                    await websocket.send_json(
-                                        {
-                                            "type": "transcript_final",
-                                            "role": "interviewer",
-                                            "content": final_text,
-                                        }
+                                    await send_realtime_event(
+                                        websocket,
+                                        RealtimeTranscriptFinal(
+                                            role="interviewer",
+                                            content=final_text,
+                                        ),
                                     )
                                     current_interviewer_text.clear()
 
                             elif event_type == "conversation.item.input_audio_transcription.delta":
                                 delta = getattr(event, "delta", None)
                                 if isinstance(delta, str) and delta:
-                                    await websocket.send_json(
-                                        {
-                                            "type": "transcript_chunk",
-                                            "role": "candidate",
-                                            "content": delta,
-                                        }
+                                    await send_realtime_event(
+                                        websocket,
+                                        RealtimeTranscriptChunk(
+                                            role="candidate",
+                                            content=delta,
+                                        ),
                                     )
 
                             elif event_type == "conversation.item.input_audio_transcription.completed":
@@ -262,57 +212,13 @@ class OpenAIProvider(AIProvider):
                                         transcript[-1].content = cand_text
                                     else:
                                         transcript.append(Message(role="candidate", content=cand_text))
-                                    await websocket.send_json(
-                                        {
-                                            "type": "transcript_chunk",
-                                            "role": "candidate",
-                                            "content": cand_text,
-                                        }
+                                    await send_realtime_event(
+                                        websocket,
+                                        RealtimeTranscriptChunk(
+                                            role="candidate",
+                                            content=cand_text,
+                                        ),
                                     )
-
-                            elif event_type == "response.done":
-                                resp = getattr(event, "response", None)
-                                usage = getattr(resp, "usage", None) if resp else None
-                                if usage is not None:
-                                    inp = getattr(usage, "input_tokens", None)
-                                    out = getattr(usage, "output_tokens", None)
-                                    tot = getattr(usage, "total_tokens", None)
-                                    if isinstance(inp, int) and inp:
-                                        token_usage["input_tokens"] += inp
-                                    if isinstance(out, int) and out:
-                                        token_usage["output_tokens"] += out
-                                    if isinstance(tot, int) and tot:
-                                        token_usage["total_tokens"] += tot
-
-                                    inp_details = getattr(usage, "input_token_details", None)
-                                    if inp_details is not None:
-                                        aud_in = getattr(inp_details, "audio_tokens", 0) or 0
-                                        txt_in = getattr(inp_details, "text_tokens", 0) or 0
-                                        cached_tot = getattr(inp_details, "cached_tokens", 0) or 0
-                                        if isinstance(aud_in, int):
-                                            token_usage["input_audio_tokens"] += aud_in
-                                        if isinstance(txt_in, int):
-                                            token_usage["input_text_tokens"] += txt_in
-                                        if isinstance(cached_tot, int):
-                                            token_usage["input_cached_tokens"] += cached_tot
-
-                                        cached_details = getattr(inp_details, "cached_tokens_details", None)
-                                        if cached_details is not None:
-                                            c_aud = getattr(cached_details, "audio_tokens", 0) or 0
-                                            c_txt = getattr(cached_details, "text_tokens", 0) or 0
-                                            if isinstance(c_aud, int):
-                                                token_usage["input_cached_audio_tokens"] += c_aud
-                                            if isinstance(c_txt, int):
-                                                token_usage["input_cached_text_tokens"] += c_txt
-
-                                    out_details = getattr(usage, "output_token_details", None)
-                                    if out_details is not None:
-                                        aud_out = getattr(out_details, "audio_tokens", 0) or 0
-                                        txt_out = getattr(out_details, "text_tokens", 0) or 0
-                                        if isinstance(aud_out, int):
-                                            token_usage["output_audio_tokens"] += aud_out
-                                        if isinstance(txt_out, int):
-                                            token_usage["output_text_tokens"] += txt_out
 
                             elif event_type == "error":
                                 err_obj = getattr(event, "error", None)
@@ -320,13 +226,13 @@ class OpenAIProvider(AIProvider):
                                 if not isinstance(err_msg, str) or not err_msg:
                                     err_msg = str(err_obj or "OpenAI Realtime error")
                                 logger.error("OpenAI Realtime error event: %s", err_msg)
-                                await websocket.send_json({"type": "error", "message": err_msg})
+                                await send_realtime_event(websocket, RealtimeError(message=err_msg))
 
                     except asyncio.CancelledError:
                         pass
                     except Exception as exc:
                         logger.error("Error receiving from OpenAI Realtime: %s", exc)
-                        await websocket.send_json({"type": "error", "message": str(exc)})
+                        await send_realtime_event(websocket, RealtimeError(message=str(exc)))
 
                 async def send_to_openai() -> None:
                     try:
@@ -357,46 +263,9 @@ class OpenAIProvider(AIProvider):
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
 
-            final_input_tokens = token_usage["input_tokens"] or max(1, len(instructions) // 4)
-            final_output_tokens = token_usage["output_tokens"]
-            final_total_tokens = token_usage["total_tokens"] or (final_input_tokens + final_output_tokens)
-            final_interviewer_turns = "\n\n".join(m.content for m in transcript if m.role == "interviewer")
+            return transcript
 
-            eff_input_audio = token_usage["input_audio_tokens"]
-            eff_input_text = token_usage["input_text_tokens"]
-            if eff_input_audio == 0 and eff_input_text == 0 and final_input_tokens > 0:
-                eff_input_text = final_input_tokens
-
-            eff_output_audio = token_usage["output_audio_tokens"]
-            eff_output_text = token_usage["output_text_tokens"]
-            if eff_output_audio == 0 and eff_output_text == 0 and final_output_tokens > 0:
-                eff_output_audio = final_output_tokens
-
-            inp_cost, out_cost, tot_cost = compute_openai_realtime_cost(
-                self.realtime_model,
-                input_text_tokens=eff_input_text,
-                input_audio_tokens=eff_input_audio,
-                input_cached_text_tokens=token_usage["input_cached_text_tokens"],
-                input_cached_audio_tokens=token_usage["input_cached_audio_tokens"],
-                output_text_tokens=eff_output_text,
-                output_audio_tokens=eff_output_audio,
-            )
-
-            return LiveSessionResult(
-                transcript=transcript,
-                interviewer_turns=final_interviewer_turns,
-                usage=LiveSessionUsage(
-                    input_tokens=final_input_tokens,
-                    output_tokens=final_output_tokens,
-                    total_tokens=final_total_tokens,
-                    input_cost=inp_cost,
-                    output_cost=out_cost,
-                    total_cost=tot_cost,
-                ),
-            )
-
-        live_result = await _run_live_session(kickoff_prompt=kickoff_message)
-        return live_result.transcript
+        return await _run_live_session(kickoff_prompt=kickoff_message)
 
     async def call_llm[T: BaseModel](
         self,

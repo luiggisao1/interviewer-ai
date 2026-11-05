@@ -27,7 +27,7 @@ from app.schemas import (
     SeniorAnswer,
 )
 from app.services.factory import create_provider
-from app.services.openai_provider import OpenAIProvider, compute_openai_realtime_cost
+from app.services.openai_provider import OpenAIProvider
 
 
 def test_openai_realtime_model_setting_default() -> None:
@@ -66,36 +66,6 @@ def test_openai_provider_supports_realtime_audio() -> None:
 
     custom_provider = OpenAIProvider(api_key="test-key", realtime_model="gpt-realtime-custom")
     assert custom_provider.realtime_model == "gpt-realtime-custom"
-
-
-def test_compute_openai_realtime_cost() -> None:
-    # Test gpt-realtime-2.1-mini rates
-    # 10,000 text in ($0.006) + 10,000 audio in ($0.10) + 1,000 cached audio ($0.0025)
-    # 5,000 text out ($0.012) + 5,000 audio out ($0.10)
-    inp_cost, out_cost, tot_cost = compute_openai_realtime_cost(
-        "gpt-realtime-2.1-mini",
-        input_text_tokens=10000,
-        input_audio_tokens=10000,
-        input_cached_audio_tokens=1000,
-        output_text_tokens=5000,
-        output_audio_tokens=5000,
-    )
-    expected_inp = (10000 * 0.60 / 1e6) + (10000 * 10.00 / 1e6) + (1000 * 2.50 / 1e6)
-    expected_out = (5000 * 2.40 / 1e6) + (5000 * 20.00 / 1e6)
-    assert inp_cost == round(expected_inp, 6)
-    assert out_cost == round(expected_out, 6)
-    assert tot_cost == round(expected_inp + expected_out, 6)
-    assert tot_cost > 0
-
-    # Test non-mini model rates
-    inp_cost_full, out_cost_full, tot_cost_full = compute_openai_realtime_cost(
-        "gpt-4o-realtime-preview",
-        input_audio_tokens=10000,
-        output_audio_tokens=10000,
-    )
-    assert inp_cost_full == round(10000 * 40.00 / 1e6, 6)
-    assert out_cost_full == round(10000 * 80.00 / 1e6, 6)
-    assert tot_cost_full == round(inp_cost_full + out_cost_full, 6)
 
 
 @pytest.fixture

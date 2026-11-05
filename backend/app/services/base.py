@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any
+
+from fastapi import WebSocket
 
 from app.schemas import (
     AnswerPair,
@@ -29,7 +30,7 @@ class AIProvider(ABC):
 
     async def handle_realtime_audio_session(
         self,
-        websocket: Any,
+        websocket: WebSocket,
         plan: InterviewPlan,
         config: InterviewConfig,
         study_guide: str,

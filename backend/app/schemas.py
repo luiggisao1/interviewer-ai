@@ -1,7 +1,8 @@
 import json
 from enum import Enum
-from typing import Any
+from typing import Literal
 
+from fastapi import WebSocket
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -102,7 +103,7 @@ class AnswerPair(BaseModel):
 
 class EvaluationContext(BaseModel):
     system_prompt: str
-    payload: dict[str, Any]
+    payload: dict[str, object]
     answer_pairs: list[AnswerPair]
 
     @property
@@ -163,3 +164,49 @@ class NextTurnOutputFormat(BaseModel):
 class EvaluationResponse(BaseModel):
     evaluation: Evaluation
     provider: str
+
+
+class RealtimeSessionStarted(BaseModel):
+    type: Literal["session_started"] = "session_started"
+    provider: str
+    model: str
+
+
+class RealtimeInterrupted(BaseModel):
+    type: Literal["interrupted"] = "interrupted"
+
+
+class RealtimeTranscriptChunk(BaseModel):
+    type: Literal["transcript_chunk"] = "transcript_chunk"
+    role: Literal["interviewer", "candidate"]
+    content: str
+
+
+class RealtimeTranscriptFinal(BaseModel):
+    type: Literal["transcript_final"] = "transcript_final"
+    role: Literal["interviewer", "candidate"]
+    content: str
+
+
+class RealtimeError(BaseModel):
+    type: Literal["error"] = "error"
+    message: str
+
+
+class RealtimeSessionCompleted(BaseModel):
+    type: Literal["session_completed"] = "session_completed"
+    transcript: list[Message]
+
+
+type RealtimeServerEvent = (
+    RealtimeSessionStarted
+    | RealtimeInterrupted
+    | RealtimeTranscriptChunk
+    | RealtimeTranscriptFinal
+    | RealtimeError
+    | RealtimeSessionCompleted
+)
+
+
+async def send_realtime_event(websocket: WebSocket, event: RealtimeServerEvent) -> None:
+    await websocket.send_json(event.model_dump(mode="json"))
