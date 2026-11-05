@@ -12,6 +12,7 @@ export interface InterviewConfig {
   duration_minutes: number;
   custom_instructions: string;
   provider?: string;
+  evaluation_provider?: string;
 }
 export interface StudyGuideSection {
   id: string;
