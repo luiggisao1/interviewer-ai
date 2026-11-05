@@ -1,3 +1,8 @@
+import asyncio
+import base64
+import json
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -25,11 +30,42 @@ from app.services.factory import create_provider
 from app.services.openai_provider import OpenAIProvider
 
 
+def test_openai_realtime_model_setting_default() -> None:
+    assert Settings.model_fields["openai_realtime_model"].default == "gpt-realtime-2.1-mini"
+    settings = Settings(_env_file=None)
+    assert settings.openai_realtime_model == "gpt-realtime-2.1-mini"
+
+
 def test_factory_creates_openai_provider() -> None:
     settings = Settings(ai_provider="openai", openai_api_key="sk-openai-test-12345")
     provider = create_provider(settings)
     assert isinstance(provider, OpenAIProvider)
     assert provider.name == "openai"
+
+
+def test_factory_creates_openai_provider_with_realtime_model() -> None:
+    settings = Settings(ai_provider="openai", openai_api_key="sk-test")
+    provider = create_provider(settings)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider.realtime_model == "gpt-realtime-2.1-mini"
+
+    custom_settings = Settings(
+        ai_provider="openai",
+        openai_api_key="sk-test",
+        openai_realtime_model="gpt-realtime-custom",
+    )
+    custom_provider = create_provider(custom_settings)
+    assert isinstance(custom_provider, OpenAIProvider)
+    assert custom_provider.realtime_model == "gpt-realtime-custom"
+
+
+def test_openai_provider_supports_realtime_audio() -> None:
+    provider = OpenAIProvider(api_key="test-key")
+    assert provider.supports_realtime_audio is True
+    assert provider.realtime_model == "gpt-realtime-2.1-mini"
+
+    custom_provider = OpenAIProvider(api_key="test-key", realtime_model="gpt-realtime-custom")
+    assert custom_provider.realtime_model == "gpt-realtime-custom"
 
 
 @pytest.fixture
@@ -315,3 +351,161 @@ async def test_empty_parsed_output_raises_provider_error(plan_request: PlanReque
         await provider.create_plan(plan_request)
     assert "empty" in exc_info.value.message.lower()
     assert exc_info.value.provider == "openai"
+
+
+@pytest.mark.asyncio
+async def test_openai_handle_realtime_audio_session() -> None:
+    provider = OpenAIProvider(api_key="test-key", recruiter_name="Iris")
+
+    mock_ws = MagicMock()
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+
+    client_pcm = b"\x10\x20"
+    b64_client_pcm = base64.b64encode(client_pcm).decode("ascii")
+
+    server_pcm = b"\x01\x02\x03\x04"
+    b64_server_pcm = base64.b64encode(server_pcm).decode("ascii")
+
+    class MockRealtimeEvent:
+        def __init__(self, type_: str, **kwargs: Any) -> None:
+            self.type = type_
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+        def __getitem__(self, item: str) -> Any:
+            return getattr(self, item)
+
+        def get(self, item: str, default: Any = None) -> Any:
+            return getattr(self, item, default)
+
+    server_events = [
+        MockRealtimeEvent("response.output_audio.delta", delta=b64_server_pcm),
+        MockRealtimeEvent("response.output_audio_transcript.delta", delta="Hello, let's start."),
+        MockRealtimeEvent("response.output_audio_transcript.done", transcript="Hello, let's start."),
+        MockRealtimeEvent(
+            "conversation.item.input_audio_transcription.completed",
+            transcript="Event loop uses epoll.",
+        ),
+        MockRealtimeEvent("input_audio_buffer.speech_started"),
+        MockRealtimeEvent(
+            "response.done",
+            response=SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=50,
+                    total_tokens=150,
+                )
+            ),
+        ),
+    ]
+
+    all_server_events_done = asyncio.Event()
+
+    async def mock_connection_aiter():
+        for event in server_events:
+            yield event
+            await asyncio.sleep(0.001)
+        all_server_events_done.set()
+        while True:
+            await asyncio.sleep(1)
+
+    mock_connection = MagicMock()
+    mock_connection.session = AsyncMock()
+    mock_connection.response = AsyncMock()
+    mock_connection.input_audio_buffer = AsyncMock()
+    mock_connection.__aiter__ = MagicMock(side_effect=mock_connection_aiter)
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_connection
+    mock_connect_cm.__aexit__.return_value = None
+
+    mock_realtime = MagicMock()
+    mock_realtime.connect = MagicMock(return_value=mock_connect_cm)
+    provider.client.realtime = mock_realtime
+
+    client_messages = [
+        {"bytes": client_pcm},
+        {"text": json.dumps({"type": "end_session"})},
+    ]
+
+    async def mock_ws_receive() -> dict[str, Any]:
+        if client_messages:
+            msg = client_messages.pop(0)
+            if "text" in msg:
+                await all_server_events_done.wait()
+            return msg
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws.receive = AsyncMock(side_effect=mock_ws_receive)
+
+    plan = InterviewPlan(
+        title="Senior Python Practice",
+        summary="Concurrency",
+        focus_areas=["AsyncIO"],
+        questions=["How does asyncio scheduling work?", "Explain epoll."],
+        estimated_turns=2,
+    )
+    config = InterviewConfig(
+        role=Role.backend_engineer,
+        mode=InterviewMode.technical,
+        difficulty=Difficulty.senior,
+        duration_minutes=20,
+    )
+    study_guide = "Python async guide: event loops and non-blocking I/O."
+
+    transcript = await provider.handle_realtime_audio_session(
+        websocket=mock_ws,
+        plan=plan,
+        config=config,
+        study_guide=study_guide,
+    )
+
+    mock_realtime.connect.assert_called_once_with(model="gpt-realtime-2.1-mini")
+
+    mock_connection.session.update.assert_awaited_once()
+    session_call_kwargs = mock_connection.session.update.call_args.kwargs
+    session_dict = session_call_kwargs.get("session", session_call_kwargs)
+    instructions = session_dict.get("instructions", "")
+    assert "Iris" in instructions
+    assert "How does asyncio scheduling work?" in instructions
+    assert session_dict.get("type") == "realtime" or "type" in session_dict
+
+    mock_ws.send_json.assert_any_await({
+        "type": "session_started",
+        "provider": "openai",
+        "model": "gpt-realtime-2.1-mini",
+    })
+
+    mock_connection.response.create.assert_awaited_once()
+
+    mock_ws.send_bytes.assert_awaited_with(server_pcm)
+
+    mock_ws.send_json.assert_any_await({
+        "type": "transcript_chunk",
+        "role": "interviewer",
+        "content": "Hello, let's start.",
+    })
+    mock_ws.send_json.assert_any_await({
+        "type": "transcript_final",
+        "role": "interviewer",
+        "content": "Hello, let's start.",
+    })
+
+    mock_ws.send_json.assert_any_await({
+        "type": "transcript_chunk",
+        "role": "candidate",
+        "content": "Event loop uses epoll.",
+    })
+
+    mock_ws.send_json.assert_any_await({"type": "interrupted"})
+
+    mock_connection.input_audio_buffer.append.assert_awaited_with(audio=b64_client_pcm)
+
+    interviewer_turns = [m for m in transcript if m.role == "interviewer"]
+    candidate_turns = [m for m in transcript if m.role == "candidate"]
+    assert len(interviewer_turns) == 1
+    assert interviewer_turns[0].content == "Hello, let's start."
+    assert len(candidate_turns) == 1
+    assert candidate_turns[0].content == "Event loop uses epoll."
