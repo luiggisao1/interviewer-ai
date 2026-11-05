@@ -88,7 +88,9 @@ class OpenAIProvider(AIProvider):
             f"Your name is {self.recruiter_name}. You are conducting a spoken {diff} {role} practice interview.\n"
             f"Use only the supplied study guide as your technical ground truth.\n"
             f"Ask one concise question at a time and follow the planned questions in order:\n{questions}\n"
-            "Listen patiently to natural pauses and non-native English. "
+            "Listen patiently to natural pauses, thoughtful hesitation, and non-native English. "
+            "Do not interrupt or respond after brief pauses; "
+            "wait for the candidate to complete their full explanation before responding.\n"
             "Keep spoken responses concise (1-2 sentences), then wait for the candidate's answer.\n"
             f"Start immediately by introducing yourself briefly as {self.recruiter_name} "
             "and asking the first interview question.\n"
@@ -118,7 +120,9 @@ class OpenAIProvider(AIProvider):
                                 type="server_vad",
                                 create_response=True,
                                 interrupt_response=True,
-                                silence_duration_ms=600,
+                                silence_duration_ms=1200,
+                                prefix_padding_ms=400,
+                                threshold=0.5,
                             ),
                         ),
                         output=RealtimeAudioConfigOutputParam(

@@ -89,7 +89,8 @@ async def next_turn(
 async def evaluate(
     request: EvaluationRequest, config: Settings = Depends(get_settings)
 ) -> EvaluationResponse:
-    provider = create_provider(config, request.config.provider)
+    eval_provider_name = request.config.evaluation_provider or request.config.provider
+    provider = create_provider(config, eval_provider_name)
     try:
         result = await provider.evaluate(request)
         return EvaluationResponse(evaluation=result, provider=provider.name)

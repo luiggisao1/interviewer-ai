@@ -329,6 +329,26 @@ export const Setup: React.FC<SetupProps> = ({
               </div>
             )}
 
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[13px] font-semibold text-slate-200">Evaluation Engine</label>
+              <Select
+                value={config.evaluation_provider || "same"}
+                onValueChange={(val) =>
+                  updateConfig("evaluation_provider", val === "same" ? undefined : val)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="same">Same as Interviewer</SelectItem>
+                  <SelectItem value="gemini">Google Gemini (Gemini 2.5 Flash)</SelectItem>
+                  <SelectItem value="openai">OpenAI (GPT-4o-mini)</SelectItem>
+                  <SelectItem value="anthropic">Anthropic (Claude 3.5 Sonnet)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="flex items-center justify-between bg-[#080D1A] border border-blue-500/15 px-3.5 py-2.5 rounded-xl gap-3.5">
               <div className="flex flex-col">
                 <strong className="block text-[13.5px] font-semibold text-white">Read Answers Aloud</strong>

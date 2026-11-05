@@ -481,6 +481,16 @@ async def test_openai_handle_realtime_audio_session() -> None:
     assert "How does asyncio scheduling work?" in instructions
     assert session_dict.get("type") == "realtime" or "type" in session_dict
 
+    turn_detection = session_dict["audio"]["input"]["turn_detection"]
+    assert turn_detection["silence_duration_ms"] == 1200
+    assert turn_detection["prefix_padding_ms"] == 400
+    assert turn_detection["threshold"] == 0.5
+
+    instructions_lower = instructions.lower()
+    expected_interrupt_phrases = ["not interrupt", "do not interrupt", "never interrupt", "avoid interrupting"]
+    assert any(phrase in instructions_lower for phrase in expected_interrupt_phrases)
+    assert "brief pause" in instructions_lower
+
     mock_ws.send_json.assert_any_await({
         "type": "session_started",
         "provider": "openai",

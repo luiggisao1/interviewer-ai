@@ -35,6 +35,7 @@ class InterviewConfig(BaseModel):
     duration_minutes: int = Field(ge=5, le=60)
     custom_instructions: str = Field(default="", max_length=2000)
     provider: str | None = Field(default=None, max_length=50)
+    evaluation_provider: str | None = Field(default=None, max_length=50)
 
 
 class PlanRequest(BaseModel):

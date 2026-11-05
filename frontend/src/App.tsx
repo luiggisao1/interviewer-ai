@@ -914,7 +914,9 @@ export default function App() {
         await ensureMicrophoneStream();
       }
       const activeProvider = config.provider || provider || "anthropic";
-      const result = await api.createPlan(studyGuide, { ...config, provider: activeProvider });
+      const activeConfig: InterviewConfig = { ...config, provider: activeProvider };
+      setConfig(activeConfig);
+      const result = await api.createPlan(studyGuide, activeConfig);
       setPlan(result.plan);
       setProvider(result.provider);
       setMessages([{ role: "interviewer", content: result.opening_message }]);
@@ -1013,7 +1015,11 @@ export default function App() {
     window.speechSynthesis?.cancel();
     cleanupVoice();
     try {
-      const result = await api.evaluate(studyGuide, config, plan, currentMessages);
+      const evalConfig: InterviewConfig = {
+        ...config,
+        provider: config.provider || provider,
+      };
+      const result = await api.evaluate(studyGuide, evalConfig, plan, currentMessages);
       setEvaluation(result.evaluation);
       setProvider(result.provider);
       setStage("results");
