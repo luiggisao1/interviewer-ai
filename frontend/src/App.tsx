@@ -919,8 +919,6 @@ export default function App() {
 
       if (audioMode === "gemini_live" && result.provider === "gemini") {
         autoStartLiveVoiceRef.current = true;
-      } else if (result.provider === "openai") {
-        autoStartVoiceRef.current = true;
       } else {
         autoStartBrowserVoiceRef.current = true;
       }
