@@ -167,6 +167,7 @@ export default function App() {
   const answerRef = useRef("");
   const submittingRef = useRef(false);
   const silenceTimerRef = useRef<number | null>(null);
+  const isCompleteRef = useRef(false);
   const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => {
@@ -515,6 +516,7 @@ export default function App() {
   }
 
   async function submitBrowserAnswer() {
+    if (complete || isCompleteRef.current) return;
     if (submittingRef.current) return;
     if (silenceTimerRef.current) {
       window.clearTimeout(silenceTimerRef.current);
@@ -547,9 +549,21 @@ export default function App() {
       setComplete(result.is_complete);
 
       if (result.is_complete) {
-        setVoiceStatus("idle");
+        isCompleteRef.current = true;
+        setComplete(true);
+        safeStopRecognition();
         browserVoiceActiveRef.current = false;
-        speak(result.interviewer_message);
+        liveVoiceActiveRef.current = false;
+        if (silenceTimerRef.current) {
+          window.clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
+        }
+        microphoneRef.current?.getTracks().forEach((track) => track.stop());
+        microphoneRef.current = null;
+        setVoiceStatus("idle");
+        speak(result.interviewer_message, () => {
+          void endInterview();
+        });
       } else {
         assistantSpeakingRef.current = true;
         setVoiceStatus("speaking");
@@ -793,10 +807,13 @@ export default function App() {
               }, remainingMs);
             }
           } else if (data.type === "session_completed") {
+            isCompleteRef.current = true;
             setComplete(true);
             if (data.transcript && Array.isArray(data.transcript)) {
               setMessages(data.transcript);
             }
+            cleanupVoice();
+            void endInterview();
           } else if (data.type === "interrupted") {
             audioQueueRef.current.forEach((src) => {
               try {
@@ -906,6 +923,8 @@ export default function App() {
   async function startInterview(event: FormEvent) {
     event.preventDefault();
     setError("");
+    setComplete(false);
+    isCompleteRef.current = false;
     if (studyGuide.trim().length < 20) return setError("Select a study guide section or enter at least 20 characters.");
     if (config.role === "Custom Role" && !config.custom_role.trim()) return setError("Enter your custom role.");
     setLoading(true);
@@ -944,6 +963,7 @@ export default function App() {
 
   async function submitAnswer(event?: FormEvent) {
     event?.preventDefault();
+    if (complete || isCompleteRef.current) return;
     if (!textMode && browserVoiceActiveRef.current) {
       await submitBrowserAnswer();
       return;
@@ -983,7 +1003,19 @@ export default function App() {
       const result = await api.nextTurn(plan, config, nextTranscript, content);
       setMessages((current) => [...current, { role: "interviewer", content: result.interviewer_message }]);
       setComplete(result.is_complete);
-      if (autoSpeak) speak(result.interviewer_message);
+      if (result.is_complete) {
+        isCompleteRef.current = true;
+        setComplete(true);
+        if (autoSpeak) {
+          speak(result.interviewer_message, () => {
+            void endInterview();
+          });
+        } else {
+          void endInterview();
+        }
+      } else {
+        if (autoSpeak) speak(result.interviewer_message);
+      }
     } catch (err) {
       setAnswer(content);
       setMessages(prior);
@@ -1032,6 +1064,7 @@ export default function App() {
   }
 
   function reset() {
+    isCompleteRef.current = false;
     window.speechSynthesis?.cancel();
     setStage("setup");
     setPlan(null);

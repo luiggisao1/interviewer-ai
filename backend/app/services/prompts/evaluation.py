@@ -69,6 +69,9 @@ Gating & Zero-Floor Rules:
   only like "Hello, coming to meet you", refusal, off-topic deflection, or gibberish), they MUST receive 0 points
   across all rubric categories, resulting in an overall_score of 0 for that answer. If no technical content was
   provided across the interview, overall_score MUST be 0.
+- Wrap-Up & Closing Exclusions: Strictly ignore wrap-up or conclusion interviewer turns and
+  parting pleasantries (e.g. 'Thank you', 'Take care', 'Goodbye'). Only evaluate, score, and generate
+  senior_answers benchmarks for actual technical and follow-up interview questions and answers.
 - Award points for each category satisfied in context without requiring explicit keyword labels.
 - Add the awarded points from all categories to produce overall_score.
 - Do not penalize technical accuracy for grammar mistakes or transcription artifacts when an actual technical
@@ -116,6 +119,9 @@ The payload contains an indexed answer_pairs list with {count} captured candidat
 senior_answers items, one for every answer_pairs item, in the same order. Do not omit short, incomplete, incorrect,
 or follow-up answers; those are especially important to coach. Copy each matching question and candidate_answer
 accurately.
+Wrap-Up & Closing Exclusions: Strictly ignore wrap-up or conclusion interviewer turns and parting
+pleasantries (e.g. 'Thank you', 'Take care', 'Goodbye'). Only evaluate, score, and generate senior_answers
+benchmarks for actual technical and follow-up interview questions and answers.
 For each item:
 - If the candidate's answer was incomplete, developing, or missing depth (< 90): provide a strong first-person
   senior-level answer grounded in the guide and explain why it is stronger.
