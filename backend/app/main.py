@@ -1,5 +1,8 @@
 import logging
+import os
+import warnings
 
+import certifi
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +10,18 @@ from app.config import Settings, get_settings
 from app.routers import api, realtime
 from app.services.base import AIProvider
 from app.services.factory import create_provider
+
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message=r".*PydanticSerializationUnexpectedValue.*",
+)
+
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

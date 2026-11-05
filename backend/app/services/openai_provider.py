@@ -2,8 +2,10 @@ import asyncio
 import base64
 import json
 import logging
+import os
 from typing import Any, cast
 
+import certifi
 import openai
 from fastapi import WebSocketDisconnect
 from langsmith import get_current_run_tree, traceable
@@ -71,6 +73,12 @@ class OpenAIProvider(AIProvider):
         config: InterviewConfig,
         study_guide: str,
     ) -> list[Message]:
+        if not os.environ.get("SSL_CERT_FILE"):
+            try:
+                os.environ["SSL_CERT_FILE"] = certifi.where()
+            except Exception:
+                pass
+
         role = config.custom_role.strip() if config.role == Role.custom and config.custom_role else config.role.value
         diff = config.difficulty.value
         questions = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(plan.questions))

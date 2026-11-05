@@ -1,10 +1,18 @@
+import os
 from functools import lru_cache
 
+import certifi
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
+
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except Exception:
+        pass
 
 class Settings(BaseSettings):
     app_name: str = "Interviewer AI API"
