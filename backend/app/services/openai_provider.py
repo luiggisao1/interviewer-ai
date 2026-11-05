@@ -147,8 +147,6 @@ class OpenAIProvider(AIProvider):
                     try:
                         async for event in connection:
                             event_type = getattr(event, "type", None)
-                            if not event_type and isinstance(event, dict):
-                                event_type = event.get("type")
 
                             if event_type == "input_audio_buffer.speech_started":
                                 await websocket.send_json({"type": "interrupted"})
@@ -156,9 +154,7 @@ class OpenAIProvider(AIProvider):
 
                             elif event_type in ("response.output_audio.delta", "response.audio.delta"):
                                 delta = getattr(event, "delta", None)
-                                if not delta and isinstance(event, dict):
-                                    delta = event.get("delta")
-                                if delta:
+                                if isinstance(delta, str) and delta:
                                     pcm_bytes = base64.b64decode(delta)
                                     await websocket.send_bytes(pcm_bytes)
 
@@ -167,9 +163,7 @@ class OpenAIProvider(AIProvider):
                                 "response.audio_transcript.delta",
                             ):
                                 delta = getattr(event, "delta", None)
-                                if not delta and isinstance(event, dict):
-                                    delta = event.get("delta")
-                                if delta:
+                                if isinstance(delta, str) and delta:
                                     current_interviewer_text.append(delta)
                                     streaming_text = "".join(current_interviewer_text).strip()
                                     await websocket.send_json(
@@ -185,9 +179,11 @@ class OpenAIProvider(AIProvider):
                                 "response.audio_transcript.done",
                             ):
                                 transcript_val = getattr(event, "transcript", None)
-                                if not transcript_val and isinstance(event, dict):
-                                    transcript_val = event.get("transcript")
-                                final_text = (transcript_val or "".join(current_interviewer_text)).strip()
+                                final_text = (
+                                    transcript_val
+                                    if isinstance(transcript_val, str) and transcript_val
+                                    else "".join(current_interviewer_text)
+                                ).strip()
                                 if final_text:
                                     transcript.append(Message(role="interviewer", content=final_text))
                                     await websocket.send_json(
@@ -201,9 +197,7 @@ class OpenAIProvider(AIProvider):
 
                             elif event_type == "conversation.item.input_audio_transcription.delta":
                                 delta = getattr(event, "delta", None)
-                                if not delta and isinstance(event, dict):
-                                    delta = event.get("delta")
-                                if delta:
+                                if isinstance(delta, str) and delta:
                                     await websocket.send_json(
                                         {
                                             "type": "transcript_chunk",
@@ -213,11 +207,8 @@ class OpenAIProvider(AIProvider):
                                     )
 
                             elif event_type == "conversation.item.input_audio_transcription.completed":
-                                cand_text = (
-                                    getattr(event, "transcript", None)
-                                    or (event.get("transcript") if isinstance(event, dict) else None)
-                                    or ""
-                                ).strip()
+                                transcript_val = getattr(event, "transcript", None)
+                                cand_text = (transcript_val if isinstance(transcript_val, str) else "").strip()
                                 if cand_text:
                                     if transcript and transcript[-1].role == "candidate":
                                         transcript[-1].content = cand_text
@@ -233,45 +224,25 @@ class OpenAIProvider(AIProvider):
 
                             elif event_type == "response.done":
                                 resp = getattr(event, "response", None)
-                                if not resp and isinstance(event, dict):
-                                    resp = event.get("response")
                                 usage = getattr(resp, "usage", None) if resp else None
-                                if not usage and isinstance(resp, dict):
-                                    usage = resp.get("usage")
-                                if usage:
-                                    inp = (
-                                        getattr(usage, "input_tokens", None)
-                                        or (usage.get("input_tokens") if isinstance(usage, dict) else 0)
-                                        or 0
-                                    )
-                                    out = (
-                                        getattr(usage, "output_tokens", None)
-                                        or (usage.get("output_tokens") if isinstance(usage, dict) else 0)
-                                        or 0
-                                    )
-                                    tot = (
-                                        getattr(usage, "total_tokens", None)
-                                        or (usage.get("total_tokens") if isinstance(usage, dict) else 0)
-                                        or 0
-                                    )
-                                    if inp:
+                                if usage is not None:
+                                    inp = getattr(usage, "input_tokens", None)
+                                    out = getattr(usage, "output_tokens", None)
+                                    tot = getattr(usage, "total_tokens", None)
+                                    if isinstance(inp, int) and inp:
                                         token_usage["input_tokens"] += inp
-                                    if out:
+                                    if isinstance(out, int) and out:
                                         token_usage["output_tokens"] += out
-                                    if tot:
+                                    if isinstance(tot, int) and tot:
                                         token_usage["total_tokens"] += tot
 
                             elif event_type == "error":
                                 err_obj = getattr(event, "error", None)
-                                if not err_obj and isinstance(event, dict):
-                                    err_obj = event.get("error")
                                 err_msg = getattr(err_obj, "message", None) if err_obj else None
-                                if not err_msg and isinstance(err_obj, dict):
-                                    err_msg = err_obj.get("message")
-                                if not err_msg:
+                                if not isinstance(err_msg, str) or not err_msg:
                                     err_msg = str(err_obj or "OpenAI Realtime error")
                                 logger.error("OpenAI Realtime error event: %s", err_msg)
-                                await websocket.send_json({"type": "error", "message": str(err_msg)})
+                                await websocket.send_json({"type": "error", "message": err_msg})
 
                     except asyncio.CancelledError:
                         pass
