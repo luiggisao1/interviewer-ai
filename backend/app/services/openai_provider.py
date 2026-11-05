@@ -8,8 +8,6 @@ from typing import Any, cast
 import certifi
 import openai
 from fastapi import WebSocketDisconnect
-from langsmith import get_current_run_tree, traceable
-from langsmith.schemas import ExtractedUsageMetadata
 from langsmith.wrappers import wrap_openai
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
@@ -106,7 +104,6 @@ class OpenAIProvider(AIProvider):
     def supports_realtime_audio(self) -> bool:
         return True
 
-    @traceable(name="OpenAI Realtime Interview", run_type="chain")
     async def handle_realtime_audio_session(
         self,
         websocket: Any,
@@ -155,15 +152,6 @@ class OpenAIProvider(AIProvider):
             "output_audio_tokens": 0,
         }
 
-        @traceable(
-            name=self.realtime_model,
-            run_type="llm",
-            metadata={
-                "ls_provider": "openai",
-                "ls_model_type": "chat",
-                "ls_model_name": self.realtime_model,
-            },
-        )
         async def _run_live_session(kickoff_prompt: str) -> LiveSessionResult:
             nonlocal token_usage
             async with self.client.realtime.connect(model=self.realtime_model) as connection:
@@ -394,40 +382,6 @@ class OpenAIProvider(AIProvider):
                 output_audio_tokens=eff_output_audio,
             )
 
-            is_mini = "mini" in self.realtime_model.lower()
-            rate_audio_in = 10.00 / 1_000_000 if is_mini else 40.00 / 1_000_000
-            rate_cached_in = 0.30 / 1_000_000 if is_mini else 2.50 / 1_000_000
-            rate_audio_out = 20.00 / 1_000_000 if is_mini else 80.00 / 1_000_000
-
-            llm_usage_meta: ExtractedUsageMetadata = {
-                "input_tokens": final_input_tokens,
-                "output_tokens": final_output_tokens,
-                "total_tokens": final_total_tokens,
-                "input_token_details": {
-                    "audio": eff_input_audio,
-                    "cache_read": token_usage["input_cached_tokens"],
-                },
-                "output_token_details": {
-                    "audio": eff_output_audio,
-                    "reasoning": 0,
-                },
-                "input_cost": inp_cost,
-                "output_cost": out_cost,
-                "total_cost": tot_cost,
-                "input_cost_details": {
-                    "audio": round(eff_input_audio * rate_audio_in, 6),
-                    "cache_read": round(token_usage["input_cached_tokens"] * rate_cached_in, 6),
-                },
-                "output_cost_details": {
-                    "audio": round(eff_output_audio * rate_audio_out, 6),
-                    "reasoning": 0.0,
-                },
-            }
-
-            llm_run = get_current_run_tree()
-            if llm_run:
-                llm_run.set(usage_metadata=llm_usage_meta)
-
             return LiveSessionResult(
                 transcript=transcript,
                 interviewer_turns=final_interviewer_turns,
@@ -442,19 +396,6 @@ class OpenAIProvider(AIProvider):
             )
 
         live_result = await _run_live_session(kickoff_prompt=kickoff_message)
-
-        current_run = get_current_run_tree()
-        if current_run:
-            chain_usage_meta: ExtractedUsageMetadata = {
-                "input_tokens": live_result.usage.input_tokens,
-                "output_tokens": live_result.usage.output_tokens,
-                "total_tokens": live_result.usage.total_tokens,
-                "input_cost": live_result.usage.input_cost,
-                "output_cost": live_result.usage.output_cost,
-                "total_cost": live_result.usage.total_cost,
-            }
-            current_run.set(usage_metadata=chain_usage_meta)
-
         return live_result.transcript
 
     async def call_llm[T: BaseModel](

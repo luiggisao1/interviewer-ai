@@ -7,8 +7,7 @@ from fastapi import WebSocketDisconnect
 from google import genai
 from google.genai import errors, types
 from google.genai.types import GenerateContentConfig, HttpOptions
-from langsmith import get_current_run_tree, traceable, wrappers
-from langsmith.schemas import ExtractedUsageMetadata
+from langsmith import wrappers
 from pydantic import BaseModel
 
 from app.exceptions import LLMProviderError
@@ -63,7 +62,6 @@ class GeminiProvider(AIProvider):
     def supports_realtime_audio(self) -> bool:
         return True
 
-    @traceable(name="Gemini Live Realtime Interview", run_type="chain")
     async def handle_realtime_audio_session(
         self,
         websocket: Any,
@@ -108,15 +106,6 @@ class GeminiProvider(AIProvider):
         )
         token_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
-        @traceable(
-            name=self.live_model,
-            run_type="llm",
-            metadata={
-                "ls_provider": "google",
-                "ls_model_type": "chat",
-                "ls_model_name": self.live_model,
-            },
-        )
         async def _run_live_session(kickoff_prompt: str) -> LiveSessionResult:
             nonlocal token_usage
             async with self.client.aio.live.connect(model=self.live_model, config=live_config) as session:
@@ -250,16 +239,6 @@ class GeminiProvider(AIProvider):
             final_output_tokens = token_usage["output_tokens"]
             final_total_tokens = token_usage["total_tokens"] or (final_input_tokens + final_output_tokens)
             final_interviewer_turns = "\n\n".join(m.content for m in transcript if m.role == "interviewer")
-
-            llm_run = get_current_run_tree()
-            if llm_run:
-                llm_usage_meta: ExtractedUsageMetadata = {
-                    "input_tokens": final_input_tokens,
-                    "output_tokens": final_output_tokens,
-                    "total_tokens": final_total_tokens,
-                }
-                llm_run.set(usage_metadata=llm_usage_meta)
-
             return LiveSessionResult(
                 transcript=transcript,
                 interviewer_turns=final_interviewer_turns,
@@ -271,16 +250,6 @@ class GeminiProvider(AIProvider):
             )
 
         live_result = await _run_live_session(kickoff_prompt=kickoff_message)
-
-        current_run = get_current_run_tree()
-        if current_run:
-            usage_meta: ExtractedUsageMetadata = {
-                "input_tokens": live_result.usage.input_tokens,
-                "output_tokens": live_result.usage.output_tokens,
-                "total_tokens": live_result.usage.total_tokens,
-            }
-            current_run.set(usage_metadata=usage_meta)
-
         return live_result.transcript
 
     async def call_llm[T: BaseModel](
