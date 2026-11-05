@@ -1,4 +1,5 @@
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ["AI_PROVIDER"] = "mock"
 os.environ.pop("OPENAI_API_KEY", None)
@@ -149,3 +150,69 @@ def test_cors_origins_strips_trailing_slashes() -> None:
 
     s = Settings(frontend_origins="https://inai.duiggi.dev/,http://localhost:5173")
     assert s.cors_origins == ["https://inai.duiggi.dev", "http://localhost:5173"]
+
+
+def test_evaluation_uses_custom_evaluation_provider() -> None:
+    custom_config = {
+        **CONFIG,
+        "provider": "openai",
+        "evaluation_provider": "gemini",
+    }
+    plan = {
+        "title": "System Design Practice",
+        "summary": "Distributed systems",
+        "focus_areas": ["Caching"],
+        "questions": ["How do you invalidate cache?"],
+        "estimated_turns": 1,
+    }
+    transcript = [
+        {"role": "interviewer", "content": "How do you invalidate cache?"},
+        {"role": "candidate", "content": "Write-through and cache TTLs."},
+    ]
+
+    mock_provider = MagicMock()
+    mock_provider.name = "gemini"
+    mock_provider.evaluate = AsyncMock(
+        return_value=Evaluation(
+            overall_score=90,
+            summary="Great explanation of caching.",
+            strengths=["Clear"],
+            improvements=[],
+            study_guide_feedback=[],
+            technical_feedback=[],
+            senior_answers=[],
+            next_steps=[],
+        )
+    )
+
+    with patch("app.routers.api.create_provider", return_value=mock_provider) as mock_create_provider:
+        response = client.post(
+            "/api/evaluation",
+            json={
+                "study_guide": GUIDE,
+                "config": custom_config,
+                "plan": plan,
+                "transcript": transcript,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "gemini"
+        mock_create_provider.assert_called_once()
+        call_args = mock_create_provider.call_args
+        called_provider = (
+            call_args.kwargs.get("provider_override")
+            if "provider_override" in call_args.kwargs
+            else call_args.args[1]
+        )
+        assert called_provider == "gemini"
+
+    from app.schemas import EvaluationRequest
+    req = EvaluationRequest.model_validate({
+        "study_guide": GUIDE,
+        "config": custom_config,
+        "plan": plan,
+        "transcript": transcript,
+    })
+    assert getattr(req.config, "evaluation_provider", None) == "gemini"
+
