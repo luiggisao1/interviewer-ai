@@ -14,6 +14,7 @@ def create_provider(settings: Settings, provider_override: str | None = None) ->
         return OpenAIProvider(
             settings.openai_api_key,
             model=settings.openai_model,
+            realtime_model=settings.openai_realtime_model,
             recruiter_name=settings.recruiter_name,
         )
     if provider in ("gemini", "google") and settings.google_api_key:

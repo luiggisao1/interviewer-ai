@@ -2,7 +2,7 @@ export type Role =
   "Software Engineer" | "Frontend Engineer" | "Backend Engineer" | "Data Scientist" | "Product Manager" | "Custom Role";
 export type Mode = "Technical" | "Behavioral" | "Mixed";
 export type Difficulty = "Junior" | "Mid-level" | "Senior";
-export type AudioMode = "web" | "gemini_live";
+export type AudioMode = "web" | "gemini_live" | "openai_realtime";
 
 export interface InterviewConfig {
   role: Role;

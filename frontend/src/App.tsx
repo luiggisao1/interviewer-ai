@@ -691,11 +691,13 @@ export default function App() {
       audioContextRef.current = audioCtx;
       nextPlayTimeRef.current = audioCtx.currentTime;
 
+      const liveProvider = config.provider || provider || "gemini";
+
       ws.onopen = () => {
         ws.send(
           JSON.stringify({
             type: "setup",
-            provider: "gemini",
+            provider: liveProvider,
             study_guide: studyGuide,
             config,
             plan,
@@ -740,7 +742,8 @@ export default function App() {
           const data = JSON.parse(event.data);
           if (data.type === "session_started") {
             setVoiceStatus("listening");
-            await startGeminiMicStreaming(ws);
+            const inputSampleRate = liveProvider === "openai" ? 24000 : 16000;
+            await startGeminiMicStreaming(ws, inputSampleRate);
             if (speechSupported && !manuallyMutedRef.current) {
               safeStartRecognition();
             }
@@ -815,7 +818,7 @@ export default function App() {
       };
 
       ws.onerror = () => {
-        setError("Gemini Live audio connection error.");
+        setError("Realtime audio connection error.");
         setVoiceStatus("error");
       };
 
@@ -824,18 +827,18 @@ export default function App() {
       };
     } catch (err) {
       cleanupVoice();
-      setError(err instanceof Error ? err.message : "Failed to connect to Gemini Live Audio.");
+      setError(err instanceof Error ? err.message : "Failed to connect to Realtime Audio.");
       setVoiceStatus("idle");
     }
   }
 
-  async function startGeminiMicStreaming(ws: WebSocket) {
+  async function startGeminiMicStreaming(ws: WebSocket, sampleRate = 16000) {
     try {
       const stream = await ensureMicrophoneStream();
       if (!stream) return;
 
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const inputCtx = new AudioCtx({ sampleRate: 16000 });
+      const inputCtx = new AudioCtx({ sampleRate });
       if (inputCtx.state === "suspended") {
         await inputCtx.resume();
       }
@@ -867,7 +870,7 @@ export default function App() {
       silentGain.connect(inputCtx.destination);
     } catch (err) {
       console.warn("[MicStreaming error]", err);
-      setError("Microphone access denied for Gemini Live Audio.");
+      setError("Microphone access denied for Realtime Audio.");
     }
   }
 
@@ -917,7 +920,10 @@ export default function App() {
       setMessages([{ role: "interviewer", content: result.opening_message }]);
       setStage("interview");
 
-      if (audioMode === "gemini_live" && result.provider === "gemini") {
+      if (
+        (audioMode === "gemini_live" && result.provider === "gemini") ||
+        (audioMode === "openai_realtime" && result.provider === "openai")
+      ) {
         autoStartLiveVoiceRef.current = true;
       } else {
         autoStartBrowserVoiceRef.current = true;
