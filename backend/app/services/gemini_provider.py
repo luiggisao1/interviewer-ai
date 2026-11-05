@@ -1,14 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import Any, cast
+from typing import cast
 
-from fastapi import WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import errors, types
 from google.genai.types import GenerateContentConfig, HttpOptions
-from langsmith import get_current_run_tree, traceable, wrappers
-from langsmith.schemas import ExtractedUsageMetadata
+from langsmith import wrappers
 from pydantic import BaseModel
 
 from app.exceptions import LLMProviderError
@@ -18,13 +17,17 @@ from app.schemas import (
     EvaluationRequest,
     InterviewConfig,
     InterviewPlan,
-    LiveSessionResult,
-    LiveSessionUsage,
     Message,
     NextTurnOutputFormat,
     NextTurnRequest,
     PlanRequest,
+    RealtimeError,
+    RealtimeInterrupted,
+    RealtimeSessionStarted,
+    RealtimeTranscriptChunk,
+    RealtimeTranscriptFinal,
     Role,
+    send_realtime_event,
 )
 from app.services.base import AIProvider
 
@@ -63,10 +66,9 @@ class GeminiProvider(AIProvider):
     def supports_realtime_audio(self) -> bool:
         return True
 
-    @traceable(name="Gemini Live Realtime Interview", run_type="chain")
     async def handle_realtime_audio_session(
         self,
-        websocket: Any,
+        websocket: WebSocket,
         plan: InterviewPlan,
         config: InterviewConfig,
         study_guide: str,
@@ -106,26 +108,12 @@ class GeminiProvider(AIProvider):
             f"Please start the interview now by introducing yourself briefly as {self.recruiter_name} "
             "and asking the first question."
         )
-        token_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
 
-        @traceable(
-            name=self.live_model,
-            run_type="llm",
-            metadata={
-                "ls_provider": "google",
-                "ls_model_type": "chat",
-                "ls_model_name": self.live_model,
-            },
-        )
-        async def _run_live_session(kickoff_prompt: str) -> LiveSessionResult:
-            nonlocal token_usage
+        async def _run_live_session(kickoff_prompt: str) -> list[Message]:
             async with self.client.aio.live.connect(model=self.live_model, config=live_config) as session:
-                await websocket.send_json(
-                    {
-                        "type": "session_started",
-                        "provider": self.name,
-                        "model": self.live_model,
-                    }
+                await send_realtime_event(
+                    websocket,
+                    RealtimeSessionStarted(provider=self.name, model=self.live_model),
                 )
 
                 await session.send(
@@ -137,19 +125,10 @@ class GeminiProvider(AIProvider):
                     try:
                         while True:
                             async for response in session.receive():
-                                if response.usage_metadata is not None:
-                                    u = response.usage_metadata
-                                    if u.prompt_token_count is not None:
-                                        token_usage["input_tokens"] = u.prompt_token_count
-                                    if u.response_token_count is not None:
-                                        token_usage["output_tokens"] = u.response_token_count
-                                    if u.total_token_count is not None:
-                                        token_usage["total_tokens"] = u.total_token_count
-
                                 server_content = response.server_content
                                 if server_content is not None:
                                     if server_content.interrupted:
-                                        await websocket.send_json({"type": "interrupted"})
+                                        await send_realtime_event(websocket, RealtimeInterrupted())
                                         current_interviewer_text.clear()
 
                                     text_chunk: str | None = None
@@ -167,12 +146,12 @@ class GeminiProvider(AIProvider):
                                     if isinstance(text_chunk, str) and text_chunk:
                                         current_interviewer_text.append(text_chunk)
                                         streaming_text = "".join(current_interviewer_text).strip()
-                                        await websocket.send_json(
-                                            {
-                                                "type": "transcript_chunk",
-                                                "role": "interviewer",
-                                                "content": streaming_text,
-                                            }
+                                        await send_realtime_event(
+                                            websocket,
+                                            RealtimeTranscriptChunk(
+                                                role="interviewer",
+                                                content=streaming_text,
+                                            ),
                                         )
 
                                     cand_text: str | None = None
@@ -189,31 +168,31 @@ class GeminiProvider(AIProvider):
                                             transcript[-1].content = cand_text
                                         else:
                                             transcript.append(Message(role="candidate", content=cand_text))
-                                        await websocket.send_json(
-                                            {
-                                                "type": "transcript_chunk",
-                                                "role": "candidate",
-                                                "content": cand_text,
-                                            }
+                                        await send_realtime_event(
+                                            websocket,
+                                            RealtimeTranscriptChunk(
+                                                role="candidate",
+                                                content=cand_text,
+                                            ),
                                         )
 
                                     if server_content.turn_complete:
                                         full_text = "".join(current_interviewer_text).strip()
                                         if full_text:
                                             transcript.append(Message(role="interviewer", content=full_text))
-                                            await websocket.send_json(
-                                                {
-                                                    "type": "transcript_final",
-                                                    "role": "interviewer",
-                                                    "content": full_text,
-                                                }
+                                            await send_realtime_event(
+                                                websocket,
+                                                RealtimeTranscriptFinal(
+                                                    role="interviewer",
+                                                    content=full_text,
+                                                ),
                                             )
                                             current_interviewer_text.clear()
                     except asyncio.CancelledError:
                         pass
                     except Exception as exc:
                         logger.error("Error receiving from Gemini Live: %s", exc)
-                        await websocket.send_json({"type": "error", "message": str(exc)})
+                        await send_realtime_event(websocket, RealtimeError(message=str(exc)))
 
                 async def send_to_gemini() -> None:
                     try:
@@ -246,32 +225,9 @@ class GeminiProvider(AIProvider):
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
 
-            final_input_tokens = token_usage["input_tokens"] or max(1, len(instructions) // 4)
-            final_output_tokens = token_usage["output_tokens"]
-            final_total_tokens = token_usage["total_tokens"] or (final_input_tokens + final_output_tokens)
-            final_interviewer_turns = "\n\n".join(m.content for m in transcript if m.role == "interviewer")
-            return LiveSessionResult(
-                transcript=transcript,
-                interviewer_turns=final_interviewer_turns,
-                usage=LiveSessionUsage(
-                    input_tokens=final_input_tokens,
-                    output_tokens=final_output_tokens,
-                    total_tokens=final_total_tokens,
-                ),
-            )
+            return transcript
 
-        live_result = await _run_live_session(kickoff_prompt=kickoff_message)
-
-        current_run = get_current_run_tree()
-        if current_run:
-            usage_meta: ExtractedUsageMetadata = {
-                "input_tokens": live_result.usage.input_tokens,
-                "output_tokens": live_result.usage.output_tokens,
-                "total_tokens": live_result.usage.total_tokens,
-            }
-            current_run.set(usage_metadata=usage_meta)
-
-        return live_result.transcript
+        return await _run_live_session(kickoff_prompt=kickoff_message)
 
     async def call_llm[T: BaseModel](
         self,

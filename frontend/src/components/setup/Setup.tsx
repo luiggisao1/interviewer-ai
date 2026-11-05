@@ -68,7 +68,7 @@ function getEngineLabel(engine: string): string {
     case "anthropic":
       return "Anthropic Claude (Claude 3.5 Sonnet)";
     case "openai":
-      return "OpenAI (GPT-4o / GPT-4o-mini)";
+      return "OpenAI (GPT-4o-mini / gpt-realtime-2.1-mini)";
     case "mock":
       return "Deterministic Mock Engine (Testing)";
     default:
@@ -284,6 +284,13 @@ export const Setup: React.FC<SetupProps> = ({
                 onValueChange={(val) => {
                   updateConfig("provider", val);
                   setProvider(val);
+                  if (setAudioMode) {
+                    if (val !== "gemini" && audioMode === "gemini_live") {
+                      setAudioMode("web");
+                    } else if (val !== "openai" && audioMode === "openai_realtime") {
+                      setAudioMode("web");
+                    }
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -313,6 +320,9 @@ export const Setup: React.FC<SetupProps> = ({
                     <SelectItem value="web">Free Web Voice (Browser STT/TTS)</SelectItem>
                     {activeEngine === "gemini" && (
                       <SelectItem value="gemini_live">Gemini Live Multimodal Voice (Direct WebSocket Audio)</SelectItem>
+                    )}
+                    {activeEngine === "openai" && (
+                      <SelectItem value="openai_realtime">OpenAI Realtime Voice (gpt-realtime-2.1-mini)</SelectItem>
                     )}
                   </SelectContent>
                 </Select>

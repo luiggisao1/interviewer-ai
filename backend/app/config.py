@@ -1,10 +1,18 @@
+import os
 from functools import lru_cache
 
+import certifi
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
+
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except Exception:
+        pass
 
 class Settings(BaseSettings):
     app_name: str = "Interviewer AI API"
@@ -12,7 +20,7 @@ class Settings(BaseSettings):
     ai_provider: str = "gemini"
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4o-mini"
-    openai_realtime_model: str = "gpt-realtime-2.1"
+    openai_realtime_model: str = "gpt-realtime-2.1-mini"
     anthropic_api_key: str | None = Field(default=None, repr=False)
     anthropic_model: str = "claude-3-5-sonnet-20241022"
     google_api_key: str | None = Field(default=None, repr=False)
