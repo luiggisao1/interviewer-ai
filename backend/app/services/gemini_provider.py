@@ -250,6 +250,16 @@ class GeminiProvider(AIProvider):
             final_output_tokens = token_usage["output_tokens"]
             final_total_tokens = token_usage["total_tokens"] or (final_input_tokens + final_output_tokens)
             final_interviewer_turns = "\n\n".join(m.content for m in transcript if m.role == "interviewer")
+
+            llm_run = get_current_run_tree()
+            if llm_run:
+                llm_usage_meta: ExtractedUsageMetadata = {
+                    "input_tokens": final_input_tokens,
+                    "output_tokens": final_output_tokens,
+                    "total_tokens": final_total_tokens,
+                }
+                llm_run.set(usage_metadata=llm_usage_meta)
+
             return LiveSessionResult(
                 transcript=transcript,
                 interviewer_turns=final_interviewer_turns,

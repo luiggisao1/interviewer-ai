@@ -45,6 +45,47 @@ from app.services.base import AIProvider
 logger = logging.getLogger(__name__)
 
 
+def compute_openai_realtime_cost(
+    model: str,
+    *,
+    input_text_tokens: int = 0,
+    input_audio_tokens: int = 0,
+    input_cached_text_tokens: int = 0,
+    input_cached_audio_tokens: int = 0,
+    output_text_tokens: int = 0,
+    output_audio_tokens: int = 0,
+) -> tuple[float, float, float]:
+    """Compute (input_cost, output_cost, total_cost) for OpenAI Realtime sessions."""
+    is_mini = "mini" in model.lower()
+    if is_mini:
+        rate_text_in = 0.60 / 1_000_000
+        rate_text_cached = 0.30 / 1_000_000
+        rate_audio_in = 10.00 / 1_000_000
+        rate_audio_cached = 2.50 / 1_000_000
+        rate_text_out = 2.40 / 1_000_000
+        rate_audio_out = 20.00 / 1_000_000
+    else:
+        rate_text_in = 5.00 / 1_000_000
+        rate_text_cached = 2.50 / 1_000_000
+        rate_audio_in = 40.00 / 1_000_000
+        rate_audio_cached = 10.00 / 1_000_000
+        rate_text_out = 20.00 / 1_000_000
+        rate_audio_out = 80.00 / 1_000_000
+
+    input_cost = (
+        (input_text_tokens * rate_text_in)
+        + (input_cached_text_tokens * rate_text_cached)
+        + (input_audio_tokens * rate_audio_in)
+        + (input_cached_audio_tokens * rate_audio_cached)
+    )
+    output_cost = (
+        (output_text_tokens * rate_text_out)
+        + (output_audio_tokens * rate_audio_out)
+    )
+    total_cost = input_cost + output_cost
+    return round(input_cost, 6), round(output_cost, 6), round(total_cost, 6)
+
+
 class OpenAIProvider(AIProvider):
     name = "openai"
 
@@ -101,7 +142,18 @@ class OpenAIProvider(AIProvider):
             f"Please start the interview now by introducing yourself briefly as {self.recruiter_name} "
             "and asking the first question."
         )
-        token_usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        token_usage: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "input_text_tokens": 0,
+            "input_audio_tokens": 0,
+            "input_cached_tokens": 0,
+            "input_cached_text_tokens": 0,
+            "input_cached_audio_tokens": 0,
+            "output_text_tokens": 0,
+            "output_audio_tokens": 0,
+        }
 
         @traceable(
             name=self.realtime_model,
@@ -244,6 +296,36 @@ class OpenAIProvider(AIProvider):
                                     if isinstance(tot, int) and tot:
                                         token_usage["total_tokens"] += tot
 
+                                    inp_details = getattr(usage, "input_token_details", None)
+                                    if inp_details is not None:
+                                        aud_in = getattr(inp_details, "audio_tokens", 0) or 0
+                                        txt_in = getattr(inp_details, "text_tokens", 0) or 0
+                                        cached_tot = getattr(inp_details, "cached_tokens", 0) or 0
+                                        if isinstance(aud_in, int):
+                                            token_usage["input_audio_tokens"] += aud_in
+                                        if isinstance(txt_in, int):
+                                            token_usage["input_text_tokens"] += txt_in
+                                        if isinstance(cached_tot, int):
+                                            token_usage["input_cached_tokens"] += cached_tot
+
+                                        cached_details = getattr(inp_details, "cached_tokens_details", None)
+                                        if cached_details is not None:
+                                            c_aud = getattr(cached_details, "audio_tokens", 0) or 0
+                                            c_txt = getattr(cached_details, "text_tokens", 0) or 0
+                                            if isinstance(c_aud, int):
+                                                token_usage["input_cached_audio_tokens"] += c_aud
+                                            if isinstance(c_txt, int):
+                                                token_usage["input_cached_text_tokens"] += c_txt
+
+                                    out_details = getattr(usage, "output_token_details", None)
+                                    if out_details is not None:
+                                        aud_out = getattr(out_details, "audio_tokens", 0) or 0
+                                        txt_out = getattr(out_details, "text_tokens", 0) or 0
+                                        if isinstance(aud_out, int):
+                                            token_usage["output_audio_tokens"] += aud_out
+                                        if isinstance(txt_out, int):
+                                            token_usage["output_text_tokens"] += txt_out
+
                             elif event_type == "error":
                                 err_obj = getattr(event, "error", None)
                                 err_msg = getattr(err_obj, "message", None) if err_obj else None
@@ -291,6 +373,61 @@ class OpenAIProvider(AIProvider):
             final_output_tokens = token_usage["output_tokens"]
             final_total_tokens = token_usage["total_tokens"] or (final_input_tokens + final_output_tokens)
             final_interviewer_turns = "\n\n".join(m.content for m in transcript if m.role == "interviewer")
+
+            eff_input_audio = token_usage["input_audio_tokens"]
+            eff_input_text = token_usage["input_text_tokens"]
+            if eff_input_audio == 0 and eff_input_text == 0 and final_input_tokens > 0:
+                eff_input_text = final_input_tokens
+
+            eff_output_audio = token_usage["output_audio_tokens"]
+            eff_output_text = token_usage["output_text_tokens"]
+            if eff_output_audio == 0 and eff_output_text == 0 and final_output_tokens > 0:
+                eff_output_audio = final_output_tokens
+
+            inp_cost, out_cost, tot_cost = compute_openai_realtime_cost(
+                self.realtime_model,
+                input_text_tokens=eff_input_text,
+                input_audio_tokens=eff_input_audio,
+                input_cached_text_tokens=token_usage["input_cached_text_tokens"],
+                input_cached_audio_tokens=token_usage["input_cached_audio_tokens"],
+                output_text_tokens=eff_output_text,
+                output_audio_tokens=eff_output_audio,
+            )
+
+            is_mini = "mini" in self.realtime_model.lower()
+            rate_audio_in = 10.00 / 1_000_000 if is_mini else 40.00 / 1_000_000
+            rate_cached_in = 0.30 / 1_000_000 if is_mini else 2.50 / 1_000_000
+            rate_audio_out = 20.00 / 1_000_000 if is_mini else 80.00 / 1_000_000
+
+            llm_usage_meta: ExtractedUsageMetadata = {
+                "input_tokens": final_input_tokens,
+                "output_tokens": final_output_tokens,
+                "total_tokens": final_total_tokens,
+                "input_token_details": {
+                    "audio": eff_input_audio,
+                    "cache_read": token_usage["input_cached_tokens"],
+                },
+                "output_token_details": {
+                    "audio": eff_output_audio,
+                    "reasoning": 0,
+                },
+                "input_cost": inp_cost,
+                "output_cost": out_cost,
+                "total_cost": tot_cost,
+                "input_cost_details": {
+                    "audio": round(eff_input_audio * rate_audio_in, 6),
+                    "cache_read": round(token_usage["input_cached_tokens"] * rate_cached_in, 6),
+                },
+                "output_cost_details": {
+                    "audio": round(eff_output_audio * rate_audio_out, 6),
+                    "reasoning": 0.0,
+                },
+            }
+
+            llm_run = get_current_run_tree()
+            if llm_run:
+                llm_run.set(usage_metadata=llm_usage_meta)
+
             return LiveSessionResult(
                 transcript=transcript,
                 interviewer_turns=final_interviewer_turns,
@@ -298,6 +435,9 @@ class OpenAIProvider(AIProvider):
                     input_tokens=final_input_tokens,
                     output_tokens=final_output_tokens,
                     total_tokens=final_total_tokens,
+                    input_cost=inp_cost,
+                    output_cost=out_cost,
+                    total_cost=tot_cost,
                 ),
             )
 
@@ -305,12 +445,15 @@ class OpenAIProvider(AIProvider):
 
         current_run = get_current_run_tree()
         if current_run:
-            usage_meta: ExtractedUsageMetadata = {
+            chain_usage_meta: ExtractedUsageMetadata = {
                 "input_tokens": live_result.usage.input_tokens,
                 "output_tokens": live_result.usage.output_tokens,
                 "total_tokens": live_result.usage.total_tokens,
+                "input_cost": live_result.usage.input_cost,
+                "output_cost": live_result.usage.output_cost,
+                "total_cost": live_result.usage.total_cost,
             }
-            current_run.set(usage_metadata=usage_meta)
+            current_run.set(usage_metadata=chain_usage_meta)
 
         return live_result.transcript
 
