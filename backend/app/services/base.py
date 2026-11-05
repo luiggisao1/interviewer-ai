@@ -15,9 +15,122 @@ from app.schemas import (
 )
 from app.services.prompts import build_evaluation_prompt
 
+CONCLUSION_PHRASES = (
+    "concludes the interview",
+    "interview is concluded",
+    "that concludes",
+    "wrap up our interview",
+    "wraps up our interview",
+    "thank you for your time",
+    "end the session",
+    "all the questions i have for you",
+    "that is all the questions",
+    "that's all the questions",
+    "conclude",
+)
+
+PARTING_PLEASANTRIES = (
+    "thank you so much",
+    "take care",
+    "have a good day",
+    "have a wonderful",
+    "goodbye",
+    "thanks iris",
+    "thanks, bye",
+    "bye!",
+    "bye",
+    "appreciate your time",
+    "thank you for your time",
+    "thanks for your time",
+    "thank you for the interview",
+    "thanks for the interview",
+    "thanks for having me",
+    "thank you",
+    "thanks",
+)
+
+TECHNICAL_INDICATORS = (
+    "redis",
+    "kafka",
+    "postgres",
+    "postgresql",
+    "mysql",
+    "sql",
+    "nosql",
+    "aws",
+    "gcp",
+    "azure",
+    "docker",
+    "kubernetes",
+    "k8s",
+    "cache",
+    "caching",
+    "memcached",
+    "index",
+    "indexes",
+    "indexing",
+    "b-tree",
+    "queue",
+    "broker",
+    "rabbit",
+    "rabbitmq",
+    "pub/sub",
+    "pubsub",
+    "lock",
+    "locks",
+    "mutex",
+    "thread",
+    "threads",
+    "concurrency",
+    "asyncio",
+    "http",
+    "rest",
+    "grpc",
+    "database",
+    "sharding",
+    "replication",
+    "partition",
+    "partitioning",
+    "acid",
+    "cap",
+    "latency",
+    "throughput",
+    "scale",
+    "scaling",
+    "load balancer",
+    "api",
+    "schema",
+    "query",
+    "table",
+    "write amplification",
+    "contention",
+)
+
+
+def is_conclusion_turn(text: str) -> bool:
+    if not text:
+        return False
+    lower = text.lower()
+    return any(phrase in lower for phrase in CONCLUSION_PHRASES)
+
+
+def is_parting_pleasantry(text: str) -> bool:
+    if not text:
+        return False
+    words = text.strip().split()
+    if len(words) > 15:
+        return False
+    lower = text.lower()
+    if any(tech in lower for tech in TECHNICAL_INDICATORS):
+        return False
+    return any(phrase in lower for phrase in PARTING_PLEASANTRIES)
+
 
 class AIProvider(ABC):
     recruiter_name: str = "Iris"
+
+    is_conclusion_turn = staticmethod(is_conclusion_turn)
+    is_parting_pleasantry = staticmethod(is_parting_pleasantry)
 
     @property
     @abstractmethod
@@ -52,8 +165,20 @@ class AIProvider(ABC):
     @property
     def next_turn_system_prompt(self) -> str:
         return (
-            "Act as a supportive but realistic interviewer. Briefly react, then ask one planned question. "
-            "Mark complete when estimated turns are answered. Do not provide evaluation yet."
+            "Act as a supportive but realistic interviewer. You are an experienced Staff+ Principal Technical "
+            "Interviewer conducting a rigorous technical practice interview. "
+            "Evaluate the candidate's answers with Staff-level engineering standards. "
+            "Probing & Drill-Down Directives: When the candidate mentions specific tools, architectures, "
+            "or high-level systems (such as Redis, Kafka, PostgreSQL, AWS, caching, database indexing, "
+            "or concurrency), execute an incisive drill-down probing question on failure modes, trade-offs, "
+            "invalidation, race conditions, or operational bottlenecks. "
+            "Pacing Guardrail: Enforce a strict pacing guardrail—ask at most 1 follow-up drill-down per topic, "
+            "bounded by the session's estimated turns. Do not linger on a single topic. If a drill-down was "
+            "already asked or the candidate has adequately answered, advance to the next planned question "
+            "from the interview plan. "
+            "Briefly react with realistic feedback (1 sentence), then ask the question. "
+            "Mark is_complete=True only when estimated turns are reached or all questions are concluded. "
+            "Do not provide overall scoring or evaluation yet."
         )
 
     @staticmethod
@@ -64,6 +189,7 @@ class AIProvider(ABC):
         pairs: list[AnswerPair] = []
         last_question = ""
         last_role = None
+        concluded = False
 
         for message in transcript:
             content = message.content.strip()
@@ -71,9 +197,14 @@ class AIProvider(ABC):
                 continue
 
             if message.role == "interviewer":
+                if is_conclusion_turn(content):
+                    concluded = True
+                    continue
                 last_question = content
                 last_role = "interviewer"
             elif message.role == "candidate":
+                if concluded or is_parting_pleasantry(content):
+                    continue
                 active_q = last_question or default_question
 
                 # Merge consecutive candidate messages for the same question instead of duplicating
@@ -114,3 +245,13 @@ class AIProvider(ABC):
 
     @abstractmethod
     async def evaluate(self, request: EvaluationRequest) -> Evaluation: ...
+
+
+BaseLLMProvider = AIProvider
+
+__all__ = [
+    "AIProvider",
+    "BaseLLMProvider",
+    "is_conclusion_turn",
+    "is_parting_pleasantry",
+]

@@ -216,3 +216,82 @@ def test_evaluation_uses_custom_evaluation_provider() -> None:
     })
     assert getattr(req.config, "evaluation_provider", None) == "gemini"
 
+
+def test_turn_rejected_when_session_already_completed() -> None:
+    """AC-3 / AC-8: /api/turn rejects with 400 when interview transcript has conclusion message."""
+    closing_msg = (
+        "Thanks—that concludes the interview. End the session when you're ready to review your feedback."
+    )
+    transcript = [
+        {"role": "interviewer", "content": "Explain REST APIs."},
+        {"role": "candidate", "content": "REST uses standard HTTP methods."},
+        {"role": "interviewer", "content": closing_msg},
+    ]
+    response = client.post(
+        "/api/turn",
+        json={
+            "plan": {
+                "title": "API Practice",
+                "summary": "APIs",
+                "focus_areas": ["APIs"],
+                "questions": ["Explain REST APIs."],
+                "estimated_turns": 1,
+            },
+            "config": CONFIG,
+            "transcript": transcript,
+            "candidate_answer": "Thank you, goodbye!",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "The interview session is already complete."
+
+
+def test_build_answer_pairs_excludes_conclusion_and_pleasantries() -> None:
+    """AC-4 / AC-8: BaseLLMProvider / AIProvider build_answer_pairs excludes wrap-up turns."""
+    from app.schemas import Message
+    from app.services.base import AIProvider
+
+    closing_msg = (
+        "Thanks—that concludes the interview. End the session when you're ready to review your feedback."
+    )
+    transcript = [
+        Message(role="interviewer", content="Explain indexing in databases."),
+        Message(role="candidate", content="Indexes speed up search queries using B-trees."),
+        Message(role="interviewer", content=closing_msg),
+        Message(role="candidate", content="Thank you so much, take care!"),
+    ]
+    pairs = AIProvider.build_answer_pairs(transcript)
+    assert len(pairs) == 1
+    assert pairs[0].question == "Explain indexing in databases."
+    assert "Indexes speed up search" in pairs[0].candidate_answer
+
+
+def test_mock_provider_probing_behavior() -> None:
+    """AC-2 / AC-8: MockProvider next_turn probes on technical keywords (e.g. Redis)."""
+    import asyncio
+
+    from app.schemas import InterviewConfig, InterviewPlan, Message, NextTurnRequest
+    from app.services.mock_provider import MockProvider
+
+    provider = MockProvider()
+    plan = InterviewPlan(
+        title="Backend Practice",
+        summary="Architecture",
+        focus_areas=["Caching", "Databases"],
+        questions=["Describe caching.", "Describe databases."],
+        estimated_turns=2,
+    )
+    req = NextTurnRequest(
+        plan=plan,
+        config=InterviewConfig.model_validate(CONFIG),
+        transcript=[Message(role="interviewer", content="Describe caching.")],
+        candidate_answer="We use Redis for in-memory caching to avoid database load.",
+    )
+    message, is_complete = asyncio.run(provider.next_turn(req))
+    assert is_complete is False
+    assert any(
+        kw in message.lower()
+        for kw in ["cache", "redis", "invalidation", "stampede", "ttl", "eviction"]
+    )
+
+
