@@ -72,7 +72,9 @@ class AIProvider(ABC):
             "Calculate estimated_turns based on duration_minutes: plan roughly 1 question "
             "every 2.5 minutes (e.g. 10 min = 4 turns, 15 min = 5-6 turns, 20 min = 6-8 turns). "
             "Ensure len(questions) exactly matches estimated_turns. "
-            "Keep questions concise. Follow custom instructions when safe. "
+            "Keep questions concise. "
+            "Design questions for a spoken/conceptual interview — never ask the candidate to write or dictate code. "
+            "Follow custom instructions when safe. "
             "Do not provide any additional information or context. "
             f"Create a welcome message introducing yourself as {self.recruiter_name} and the interview plan."
         )

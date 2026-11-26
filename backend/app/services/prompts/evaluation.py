@@ -56,7 +56,8 @@ Do not use a 1–10 scale (e.g. 8/10 must be returned as 80).
 
 Calculate the score additively using this weighted rubric:
 - Technical accuracy & constraints: 30 points (correct architecture, memory models, mechanisms)
-- Concrete practical examples: 20 points (actionable production tooling, diagnostics, code patterns)
+- Concrete practical examples: 20 points (actionable production tooling, diagnostics, spoken design/architecture
+  examples)
 - Senior judgment & trade-offs: 20 points (justifying decisions, e.g. streaming vs. buffering, worker recycling)
 - Production readiness & observability: 20 points (metrics, alerts, profiling, failure mitigation)
 - Communication clarity & structure: 10 points (well-structured, concise, professional tone)
@@ -73,6 +74,9 @@ Gating & Zero-Floor Rules:
 - Add the awarded points from all categories to produce overall_score.
 - Do not penalize technical accuracy for grammar mistakes or transcription artifacts when an actual technical
   answer is attempted.
+- Spoken/Conceptual Interview Rule: This is a spoken interview, not a coding test. Never penalize the candidate
+  for omitting literal code, syntax, or full implementations; award full credit for concrete examples, classes,
+  or patterns explained clearly in spoken prose.
 
 Calibration & Anti-Bias Guidelines:
 - Full Score Anchor: Award 95–100 when a candidate demonstrates solid senior-level mastery across architecture,
@@ -117,14 +121,23 @@ senior_answers items, one for every answer_pairs item, in the same order. Do not
 or follow-up answers; those are especially important to coach. Copy each matching question and candidate_answer
 accurately.
 For each item:
-- If the candidate's answer was incomplete, developing, or missing depth (< 90): provide a strong first-person
-  senior-level answer grounded in the guide and explain why it is stronger.
+- If the candidate's answer was incomplete, developing, or missing depth (< 90): provide a sharp, precise,
+  first-person senior-level spoken interview answer grounded in the guide, and a concise why_stronger explanation
+  (1-2 sentences) highlighting the specific missing concepts, trade-offs, or production concerns.
+- Senior answer style rules (STRICT):
+  * NO CODE: Never include code blocks, fenced markdown (```), class or function definitions, multi-line code
+    snippets, or pseudocode. Explain classes, architectures, patterns, and solutions verbally in plain prose.
+    You may mention short inline identifiers (e.g. csv.reader, pyproject.toml, ValueError) only when naming a
+    specific tool, module, or concept.
+  * PRECISE & SPOKEN: Write as a crisp, high-signal verbal answer a senior engineer would actually deliver out
+    loud in an interview — 1 short paragraph or 3-5 tight sentences (~70-130 words). Go straight to the core
+    mechanisms, concrete trade-offs, and production realities.
+  * NO FILLER OR TEXTBOOK ESSAYS: Avoid numbered multi-section lectures, markdown headings, generic boilerplate,
+    or inventing personal facts/metrics. Use brief, concrete hypothetical examples verbally when helpful.
 - If the candidate's answer already demonstrates complete senior/staff mastery (score >= 95 or 100): DO NOT
-  duplicate or rephrase the candidate's answer into senior_answer. Set senior_answer to "" (empty string) and in
-  why_stronger provide a congratulatory validation (e.g. "Gold Standard: Your response already demonstrates
-  complete senior mastery with zero gaps. No corrective model answer needed.").
-Demonstrate practical experience, trade-offs, production concerns, and clear decision-making
-without inventing personal facts or metrics. Use clearly hypothetical examples when needed."""
+  duplicate, rephrase, or write meta-commentary in senior_answer. Set senior_answer to "" (strictly empty string)
+  and in why_stronger provide a brief validation (e.g. "Gold Standard: Your response already demonstrates
+  complete senior mastery with zero gaps. No corrective model answer needed.")."""
 
 
 def build_evaluation_prompt(count: int, version: str = "calibrated") -> str:

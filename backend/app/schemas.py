@@ -150,7 +150,13 @@ class LiveSessionResult(BaseModel):
 class SeniorAnswer(BaseModel):
     question: str = Field(default="Interview question")
     candidate_answer: str = Field(default="")
-    senior_answer: str = Field(default="")
+    senior_answer: str = Field(
+        default="",
+        description=(
+            "Concise, precise first-person spoken senior-level answer in plain prose (~70-130 words, "
+            "no code blocks or code snippets), or empty string if the candidate already hit the gold standard."
+        ),
+    )
     why_stronger: str = Field(default="")
 
 

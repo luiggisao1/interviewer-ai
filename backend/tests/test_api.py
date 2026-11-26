@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.main import app
 from app.schemas import Evaluation, SeniorAnswer
+from app.services.mock_provider import MockProvider
+from app.services.prompts import build_evaluation_prompt
 
 get_settings.cache_clear()
 client = TestClient(app)
@@ -117,6 +119,19 @@ def test_evaluation_senior_answer_defaults() -> None:
     assert sa.candidate_answer == ""
     assert sa.senior_answer == ""
     assert sa.why_stronger == ""
+
+
+def test_calibrated_evaluation_prompt_forbids_code_in_senior_answers() -> None:
+    prompt = build_evaluation_prompt(count=3)
+    assert "NO CODE" in prompt
+    assert "PRECISE & SPOKEN" in prompt
+    assert "Spoken/Conceptual Interview Rule" in prompt
+    assert "code patterns" not in prompt
+    assert "exactly 3" in prompt
+    schema = SeniorAnswer.model_json_schema()
+    assert "no code" in schema["properties"]["senior_answer"]["description"].lower()
+    plan_prompt = MockProvider().create_plan_system_prompt
+    assert "spoken/conceptual interview" in plan_prompt
 
 
 def test_single_turn_early_evaluation_no_duplication() -> None:
