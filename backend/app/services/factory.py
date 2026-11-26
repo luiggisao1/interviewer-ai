@@ -21,6 +21,8 @@ def create_provider(settings: Settings, provider_override: str | None = None) ->
         return GeminiProvider(
             settings.google_api_key,
             model=settings.gemini_model,
+            evaluation_model=settings.gemini_evaluation_model,
+            evaluation_thinking_level=settings.gemini_evaluation_thinking_level,
             live_model=settings.gemini_realtime_model,
             recruiter_name=settings.recruiter_name,
         )

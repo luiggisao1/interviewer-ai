@@ -278,8 +278,10 @@ Edit `backend/.env`:
 ```dotenv
 AI_PROVIDER=gemini
 GOOGLE_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_REALTIME_MODEL=gemini-3.8-flash
+GEMINI_MODEL=gemini-3.8-flash
+GEMINI_EVALUATION_MODEL=gemini-4-hydrogen
+GEMINI_EVALUATION_THINKING_LEVEL=medium
+GEMINI_REALTIME_MODEL=gemini-3.8-live
 RECRUITER_NAME=Iris
 
 # Optional LangSmith Tracing

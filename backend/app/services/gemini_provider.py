@@ -40,12 +40,16 @@ class GeminiProvider(AIProvider):
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.5-flash-lite",
+        model: str = "gemini-3.8-flash",
+        evaluation_model: str | None = None,
+        evaluation_thinking_level: str | None = "medium",
         live_model: str = "gemini-3.8-live",
         recruiter_name: str = "Iris",
     ) -> None:
         self.api_key = api_key
         self.model = model
+        self.evaluation_model = (evaluation_model or "").strip() or model
+        self.evaluation_thinking_level = (evaluation_thinking_level or "").strip() or None
         self.live_model = live_model
         self.recruiter_name = recruiter_name
         gemini_client = genai.Client(
@@ -341,16 +345,26 @@ class GeminiProvider(AIProvider):
         output_format: type[T],
         contents: str,
         temperature: float = 0.5,
+        model: str | None = None,
+        thinking_level: str | None = None,
     ) -> T:
+        target_model = (model or "").strip() or self.model
+        thinking_config: types.ThinkingConfig | None = None
+        cleaned_level = (thinking_level or "").strip()
+        if cleaned_level and not target_model.startswith(("gemini-1.", "gemini-2.")):
+            thinking_config = types.ThinkingConfig(
+                thinking_level=cast(types.ThinkingLevel, cleaned_level.upper()),
+            )
         try:
             response = await self.client.aio.models.generate_content(
-                model=self.model,
+                model=target_model,
                 contents=contents,
                 config=GenerateContentConfig(
                     system_instruction=system_prompt,
                     response_mime_type="application/json",
                     response_schema=output_format,
                     temperature=temperature,
+                    thinking_config=thinking_config,
                 ),
             )
             if response.parsed:
@@ -403,4 +417,7 @@ class GeminiProvider(AIProvider):
             system_prompt=ctx.system_prompt,
             output_format=Evaluation,
             contents=ctx.payload_json,
+            temperature=0.2,
+            model=self.evaluation_model,
+            thinking_level=self.evaluation_thinking_level,
         )

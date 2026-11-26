@@ -249,8 +249,13 @@ async def run_benchmark(
         if not api_key:
             logger.error("GOOGLE_API_KEY is not set in backend/.env")
             sys.exit(1)
-        target_model = model or settings.gemini_model
-        provider: AnthropicProvider | GeminiProvider = GeminiProvider(api_key=api_key, model=target_model)
+        target_model = model or settings.gemini_evaluation_model
+        provider: AnthropicProvider | GeminiProvider = GeminiProvider(
+            api_key=api_key,
+            model=target_model,
+            evaluation_model=target_model,
+            evaluation_thinking_level=settings.gemini_evaluation_thinking_level,
+        )
     else:
         api_key = settings.anthropic_api_key
         if not api_key:

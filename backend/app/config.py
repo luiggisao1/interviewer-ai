@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, repr=False)
     anthropic_model: str = "claude-3-5-sonnet-20241022"
     google_api_key: str | None = Field(default=None, repr=False)
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
+    gemini_evaluation_model: str = "gemini-4-hydrogen"
+    gemini_evaluation_thinking_level: str | None = "medium"
     gemini_realtime_model: str = "gemini-3.8-live"
     recruiter_name: str = "Iris"
     frontend_origins: str = "http://localhost:5173"

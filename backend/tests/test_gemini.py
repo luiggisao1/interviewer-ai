@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from google.genai import errors
+from google.genai import errors, types
 
 from app.config import Settings
 from app.exceptions import LLMProviderError
@@ -33,6 +33,9 @@ def test_factory_creates_gemini_provider() -> None:
     provider = create_provider(settings)
     assert isinstance(provider, GeminiProvider)
     assert provider.name == "gemini"
+    assert provider.model == "gemini-3.8-flash"
+    assert provider.evaluation_model == "gemini-4-hydrogen"
+    assert provider.evaluation_thinking_level == "medium"
 
 
 def test_factory_creates_gemini_provider_with_google_alias() -> None:
@@ -502,3 +505,81 @@ async def test_gemini_realtime_fallback_ends_on_verbal_goodbye_without_tool() ->
         ("candidate", "Cooperative multitasking on one thread."),
         ("interviewer", "That concludes our interview. Goodbye!"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_gemini_uses_separate_models_for_turns_and_evaluation(
+    plan_request: PlanRequest,
+    evaluation_request: EvaluationRequest,
+) -> None:
+    provider = GeminiProvider(
+        api_key="test-key",
+        model="gemini-3.8-flash",
+        evaluation_model="gemini-4-hydrogen",
+        evaluation_thinking_level="medium",
+    )
+
+    mock_plan_resp = MagicMock()
+    mock_plan_resp.parsed = CreatePlanOutputFormat(
+        plan=InterviewPlan(
+            title="Test Plan",
+            summary="Summary",
+            focus_areas=["AsyncIO"],
+            questions=["Explain asyncio."],
+            estimated_turns=1,
+        ),
+        opening_message="Welcome!",
+    )
+    mock_plan_resp.text = None
+
+    mock_eval_resp = MagicMock()
+    mock_eval_resp.parsed = Evaluation(overall_score=88, summary="Solid.")
+    mock_eval_resp.text = None
+
+    provider.client.aio.models.generate_content = AsyncMock(
+        side_effect=[mock_plan_resp, mock_eval_resp]
+    )
+
+    await provider.create_plan(plan_request)
+    await provider.evaluate(evaluation_request)
+
+    calls = provider.client.aio.models.generate_content.await_args_list
+    assert len(calls) == 2
+
+    plan_call = calls[0].kwargs
+    assert plan_call["model"] == "gemini-3.8-flash"
+    assert plan_call["config"].temperature == 0.5
+    assert plan_call["config"].thinking_config is None
+
+    eval_call = calls[1].kwargs
+    assert eval_call["model"] == "gemini-4-hydrogen"
+    assert eval_call["config"].temperature == 0.2
+    assert eval_call["config"].thinking_config is not None
+    assert eval_call["config"].thinking_config.thinking_level == types.ThinkingLevel.MEDIUM
+
+
+@pytest.mark.asyncio
+async def test_gemini_omits_thinking_level_for_2_5_models(
+    evaluation_request: EvaluationRequest,
+) -> None:
+    provider = GeminiProvider(
+        api_key="test-key",
+        model="gemini-2.5-flash",
+        evaluation_model="gemini-2.5-flash",
+        evaluation_thinking_level="medium",
+    )
+
+    mock_eval_resp = MagicMock()
+    mock_eval_resp.parsed = Evaluation(overall_score=85, summary="Good.")
+    mock_eval_resp.text = None
+
+    provider.client.aio.models.generate_content = AsyncMock(return_value=mock_eval_resp)
+
+    await provider.evaluate(evaluation_request)
+
+    eval_call = provider.client.aio.models.generate_content.await_args.kwargs
+    assert eval_call["model"] == "gemini-2.5-flash"
+    assert eval_call["config"].thinking_config is None
+
+
+
