@@ -12,6 +12,7 @@ from app.schemas import (
     PlanRequest,
     PlanResponse,
 )
+from app.services.base import is_conclusion_turn
 from app.services.factory import create_provider
 from app.study_guide import StudyGuideSection, load_study_guide_sections
 
@@ -67,6 +68,14 @@ async def create_plan(
 async def next_turn(
     request: NextTurnRequest, config: Settings = Depends(get_settings)
 ) -> NextTurnResponse:
+    if any(
+        item.role == "interviewer" and is_conclusion_turn(item.content)
+        for item in request.transcript
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The interview session is already complete.",
+        )
     provider = create_provider(config, request.config.provider)
     try:
         message, complete = await provider.next_turn(request)

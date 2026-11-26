@@ -10,6 +10,41 @@ from app.schemas import (
 )
 from app.services.base import AIProvider
 
+PROBING_TOPICS = [
+    {
+        "keywords": ["redis", "cache", "caching", "memcached"],
+        "drill_down": (
+            "Now that you mention Redis and caching, how would you handle "
+            "cache invalidation, TTL expiration, and mitigating cache stampedes under heavy traffic?"
+        ),
+        "drill_down_signatures": ["stampede", "invalidation", "ttl expiration"],
+    },
+    {
+        "keywords": ["kafka", "queue", "broker", "rabbit", "event-driven", "pub/sub"],
+        "drill_down": (
+            "Now that you mention Kafka topic partitions, how do you handle "
+            "consumer lag, partition key skew, and ordering guarantees with at-least-once delivery?"
+        ),
+        "drill_down_signatures": ["consumer lag", "partition key skew", "ordering guarantees"],
+    },
+    {
+        "keywords": ["index", "indexes", "indexing", "b-tree", "composite index"],
+        "drill_down": (
+            "Now that you mention database indexing, how do you evaluate "
+            "write amplification, selectivity, and composite index ordering against table scans?"
+        ),
+        "drill_down_signatures": ["write amplification", "selectivity", "composite index ordering", "table scans"],
+    },
+    {
+        "keywords": ["concurrency", "thread", "threads", "mutex", "lock", "locks", "asyncio"],
+        "drill_down": (
+            "Now that you mention concurrency and locks, how do you prevent "
+            "deadlocks, race conditions, and minimize lock contention under high contention?"
+        ),
+        "drill_down_signatures": ["deadlocks", "race conditions", "lock contention"],
+    },
+]
+
 
 class MockProvider(AIProvider):
     name = "mock"
@@ -75,21 +110,51 @@ class MockProvider(AIProvider):
         answered = 1 + sum(
             1 for message in request.transcript if message.role == "candidate"
         )
-        complete = answered >= request.plan.estimated_turns
-        if complete:
+        if answered >= request.plan.estimated_turns:
             return (
                 "Thanks—that concludes the interview. End the session when you’re ready to review your feedback.",
                 True,
             )
+
+        lower_answer = request.candidate_answer.lower()
+        last_interviewer_q = ""
+        for m in reversed(request.transcript):
+            if m.role == "interviewer":
+                last_interviewer_q = m.content.lower()
+                break
+
+        for topic in PROBING_TOPICS:
+            if any(kw in lower_answer for kw in topic["keywords"]):
+                has_mention = (
+                    "now that you mention" in last_interviewer_q
+                    and any(kw in last_interviewer_q for kw in topic["keywords"])
+                )
+                already_probed = (
+                    topic["drill_down"].lower() in last_interviewer_q
+                    or has_mention
+                    or any(term in last_interviewer_q for term in topic["drill_down_signatures"])
+                )
+                if not already_probed:
+                    return topic["drill_down"], False
+                break
+
         answer = request.candidate_answer.strip()
         bridge = (
             "Good explanation."
             if len(answer.split()) >= 15
             else "Thanks. Try to add a concrete example and explain your reasoning."
         )
-        question = request.plan.questions[
-            min(answered, len(request.plan.questions) - 1)
-        ]
+        asked_planned_indices: list[int] = []
+        for m in request.transcript:
+            if m.role == "interviewer":
+                for idx, q in enumerate(request.plan.questions):
+                    if q == m.content or q in m.content:
+                        asked_planned_indices.append(idx)
+                        break
+        fallback_idx = min(answered, len(request.plan.questions) - 1)
+        next_planned_idx = (max(asked_planned_indices) + 1) if asked_planned_indices else fallback_idx
+        next_planned_idx = min(next_planned_idx, len(request.plan.questions) - 1)
+        question = request.plan.questions[next_planned_idx]
         return f"{bridge} {question}", False
 
     async def evaluate(self, request: EvaluationRequest) -> Evaluation:
