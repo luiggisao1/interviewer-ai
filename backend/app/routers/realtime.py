@@ -4,6 +4,8 @@ import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.config import Settings, get_settings
+from app.database import InterviewRepository
+from app.routers.api import get_repository
 from app.schemas import (
     InterviewConfig,
     InterviewPlan,
@@ -21,11 +23,20 @@ logger = logging.getLogger(__name__)
 async def realtime_audio_websocket(
     websocket: WebSocket,
     settings: Settings = Depends(get_settings),
+    repo: InterviewRepository = Depends(get_repository),
 ) -> None:
     await websocket.accept()
     try:
         init_message = await websocket.receive_text()
         init_data = json.loads(init_message)
+
+        if settings.require_access_key:
+            raw_key = init_data.get("access_key") or websocket.headers.get("x-access-key")
+            ok, _status, detail = repo.validate_and_consume_access_key(raw_key, consume_session=False)
+            if not ok:
+                await send_realtime_event(websocket, RealtimeError(message=detail))
+                await websocket.close(code=1008)
+                return
 
         provider_name = init_data.get("provider", settings.resolved_provider)
         provider = create_provider(settings, provider_name)

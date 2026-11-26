@@ -27,6 +27,12 @@ class Difficulty(str, Enum):
     senior = "Senior"
 
 
+class StorageMode(str, Enum):
+    all = "all"
+    senior_only = "senior_only"
+    none = "none"
+
+
 class InterviewConfig(BaseModel):
     role: Role
     custom_role: str = Field(default="", max_length=100)
@@ -36,6 +42,16 @@ class InterviewConfig(BaseModel):
     custom_instructions: str = Field(default="", max_length=2000)
     provider: str | None = Field(default=None, max_length=50)
     evaluation_provider: str | None = Field(default=None, max_length=50)
+    candidate_name: str = Field(default="", max_length=100)
+    storage_mode: StorageMode = Field(default=StorageMode.all)
+    study_guide_section: str = Field(default="", max_length=100)
+
+    @field_validator("candidate_name", "study_guide_section", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: object) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
 
 
 class PlanRequest(BaseModel):
@@ -165,6 +181,101 @@ class NextTurnOutputFormat(BaseModel):
 class EvaluationResponse(BaseModel):
     evaluation: Evaluation
     provider: str
+    saved_session_id: str | None = None
+    storage_mode: StorageMode = StorageMode.all
+
+
+class StoredResponseItem(BaseModel):
+    id: int
+    session_id: str
+    candidate_name: str
+    storage_mode: StorageMode
+    role: str
+    difficulty: str
+    mode: str
+    study_guide_section: str
+    plan_title: str
+    provider: str
+    overall_score: int | None = None
+    question_order: int
+    question: str
+    candidate_answer: str | None = None
+    senior_answer: str
+    why_stronger: str
+    created_at: str
+
+
+class StoredSessionSummary(BaseModel):
+    id: str
+    candidate_name: str
+    storage_mode: StorageMode
+    role: str
+    difficulty: str
+    mode: str
+    study_guide_section: str
+    plan_title: str
+    provider: str
+    overall_score: int | None = None
+    summary: str
+    response_count: int
+    created_at: str
+
+
+class StoredSessionDetail(StoredSessionSummary):
+    responses: list[StoredResponseItem] = Field(default_factory=list)
+
+
+class QuestionAnswerEntry(BaseModel):
+    response_id: int
+    session_id: str
+    candidate_name: str
+    storage_mode: StorageMode
+    difficulty: str
+    role: str
+    study_guide_section: str
+    overall_score: int | None = None
+    candidate_answer: str | None = None
+    senior_answer: str
+    why_stronger: str
+    created_at: str
+
+
+class QuestionGroup(BaseModel):
+    question: str
+    study_guide_section: str
+    answer_count: int
+    entries: list[QuestionAnswerEntry] = Field(default_factory=list)
+
+
+class CreateAccessKeyRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=100)
+    max_uses: int | None = Field(default=5, ge=1, le=10000)
+    expires_in_days: int | None = Field(default=30, ge=1, le=3650)
+
+    @field_validator("label")
+    @classmethod
+    def label_not_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Label cannot be blank")
+        return cleaned
+
+
+class AccessKeySummary(BaseModel):
+    id: str
+    label: str
+    key_prefix: str
+    is_active: bool
+    max_uses: int | None = None
+    uses_count: int
+    requests_used: int
+    expires_at: str | None = None
+    last_used_at: str | None = None
+    created_at: str
+
+
+class CreateAccessKeyResponse(AccessKeySummary):
+    raw_key: str
 
 
 class RealtimeSessionStarted(BaseModel):

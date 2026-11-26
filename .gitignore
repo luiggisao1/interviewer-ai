@@ -11,6 +11,8 @@ dist/
 .npm-cache/
 frontend/.env
 *.tsbuildinfo
+bun.lock
+bun.lockb
 
 # Editors / OS
 .DS_Store
@@ -40,3 +42,9 @@ tasks/
 memory/
 scripts/safety_guard.py
 scripts/tdd-check.sh
+
+# Local SQLite database
+backend/data/
+*.db
+*.db-wal
+*.db-shm

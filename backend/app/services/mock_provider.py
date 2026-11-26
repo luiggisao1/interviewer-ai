@@ -68,7 +68,9 @@ class MockProvider(AIProvider):
             questions=questions,
             estimated_turns=count,
         )
-        opening = f"Welcome! I’ll be your interviewer for this {role} practice session. {questions[0]}"
+        candidate = config.candidate_name.strip()
+        greeting = f"Welcome, {candidate}!" if candidate else "Welcome!"
+        opening = f"{greeting} I’ll be your interviewer for this {role} practice session. {questions[0]}"
         return plan, opening
 
     async def next_turn(self, request: NextTurnRequest) -> tuple[str, bool]:

@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.28.1",
     "langsmith>=0.14.15",
     "openai>=3.41.0",
+    "sqlmodel>=0.0.50",
 ]
 
 [dependency-groups]

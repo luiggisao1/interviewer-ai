@@ -1,7 +1,9 @@
 import os
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ["AI_PROVIDER"] = "mock"
+os.environ["DATABASE_PATH"] = os.path.join(tempfile.mkdtemp(prefix="interviewer-api-test-"), "test.db")
 os.environ.pop("OPENAI_API_KEY", None)
 
 from fastapi.testclient import TestClient

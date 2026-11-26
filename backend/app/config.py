@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 
 import certifi
 from dotenv import load_dotenv
@@ -25,9 +26,13 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-sonnet-20241022"
     google_api_key: str | None = Field(default=None, repr=False)
     gemini_model: str = "gemini-2.5-flash"
-    gemini_realtime_model: str = "gemini-3.8-flash"
+    gemini_realtime_model: str = "gemini-3.8-live"
     recruiter_name: str = "Iris"
     frontend_origins: str = "http://localhost:5173"
+    database_path: str = "data/interviewer.db"
+    database_url: str | None = None
+    require_access_key: bool = False
+    admin_secret: str | None = Field(default=None, repr=False)
 
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"), env_file_encoding="utf-8", extra="ignore"
@@ -66,6 +71,26 @@ class Settings(BaseSettings):
         if provider in ("gemini", "google") and self.google_api_key:
             return "gemini"
         return "mock"
+
+    @property
+    def resolved_database_path(self) -> Path:
+        path = Path(self.database_path)
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parents[1] / path
+
+    @property
+    def resolved_database_url(self) -> str:
+        if self.database_url and self.database_url.strip():
+            url = self.database_url.strip()
+            if url.startswith("sqlite:///"):
+                raw_path = url[len("sqlite:///") :]
+                if raw_path == ":memory:" or Path(raw_path).is_absolute():
+                    return url
+                resolved = Path(__file__).resolve().parents[1] / raw_path
+                return f"sqlite:///{resolved}"
+            return url
+        return f"sqlite:///{self.resolved_database_path}"
 
 
 @lru_cache
