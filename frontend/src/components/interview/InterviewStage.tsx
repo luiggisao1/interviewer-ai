@@ -69,14 +69,18 @@ export const InterviewStage: React.FC<InterviewStageProps> = ({
 
       {complete && (
         <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 text-sm font-semibold">
-          <span>✓ Session turns complete — ready for final evaluation debrief.</span>
+          <span>
+            {isEvaluating
+              ? "✓ Interview complete — synthesizing your evaluation debrief…"
+              : "✓ Interview complete — launching your evaluation debrief…"}
+          </span>
           <button
             type="button"
             onClick={onEndInterview}
             disabled={loading || isEvaluating}
             className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-full cursor-pointer shadow-lg shadow-emerald-500/30 transition-all disabled:opacity-60"
           >
-            {isEvaluating ? "Synthesizing…" : "View Evaluation Scorecard →"}
+            {isEvaluating ? "Synthesizing…" : "Run Debrief Now →"}
           </button>
         </div>
       )}

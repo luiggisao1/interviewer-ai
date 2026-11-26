@@ -8,19 +8,29 @@ import {
   ArrowRight,
   Sparkles,
   Compass,
+  Database,
+  Shield,
 } from "lucide-react";
-import type { Evaluation } from "../../types";
+import type { Evaluation, StorageMode } from "../../types";
 
 interface DebriefProps {
   evaluation: Evaluation;
   provider: string;
+  candidateName?: string;
+  storageMode?: StorageMode;
+  savedSessionId?: string | null;
   onReset: () => void;
+  onOpenReview?: () => void;
 }
 
 export const Debrief: React.FC<DebriefProps> = ({
   evaluation,
   provider,
+  candidateName,
+  storageMode = "none",
+  savedSessionId,
   onReset,
+  onOpenReview,
 }) => {
   const [activeTab, setActiveTab] = useState<"feedback" | "benchmarks" | "roadmap">("feedback");
 
@@ -144,8 +154,61 @@ export const Debrief: React.FC<DebriefProps> = ({
             </div>
           </div>
 
-          {/* Sticky Bottom CTA */}
-          <div className="pt-3 border-t border-white/10 mt-auto">
+          {/* Sticky Bottom CTA & Storage Status */}
+          <div className="pt-3 border-t border-white/10 mt-auto flex flex-col gap-3">
+            {savedSessionId && storageMode === "all" ? (
+              <div className="bg-emerald-950/35 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 text-xs text-emerald-200 leading-snug">
+                  <Database className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-emerald-300 font-semibold block">
+                      Saved for {candidateName?.trim() || "Candidate"}
+                    </strong>
+                    <span className="text-emerald-200/80">
+                      Questions, your answers, and LLM senior answers are stored.
+                    </span>
+                  </div>
+                </div>
+                {onOpenReview && (
+                  <button
+                    type="button"
+                    onClick={onOpenReview}
+                    className="shrink-0 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    View in Review Archive
+                  </button>
+                )}
+              </div>
+            ) : savedSessionId && storageMode === "senior_only" ? (
+              <div className="bg-sky-950/40 border border-sky-500/30 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 text-xs text-sky-200 leading-snug">
+                  <Shield className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-sky-300 font-semibold block">
+                      Saved Senior Benchmark Only ({candidateName?.trim() || "Candidate"})
+                    </strong>
+                    <span className="text-sky-200/80">
+                      Questions &amp; LLM senior answers stored; personal answers were omitted.
+                    </span>
+                  </div>
+                </div>
+                {onOpenReview && (
+                  <button
+                    type="button"
+                    onClick={onOpenReview}
+                    className="shrink-0 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    View in Review Archive
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="bg-[#080D1A] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-slate-400 flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>Private session — responses were not saved to the database.</span>
+              </div>
+            )}
+
             <button
               onClick={onReset}
               className="w-full h-12 bg-blue-600 hover:bg-blue-500 text-white font-bold text-[15px] rounded-xl shadow-lg shadow-blue-600/40 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"

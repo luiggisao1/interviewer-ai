@@ -6,8 +6,16 @@ import { EvaluatingOverlay } from "./components/layout/EvaluatingOverlay";
 import { Setup } from "./components/setup/Setup";
 import { InterviewStage } from "./components/interview/InterviewStage";
 import { Debrief } from "./components/debrief/Debrief";
+import { ReviewArchive } from "./components/review/ReviewArchive";
+import { AdminPanel } from "./components/admin/AdminPanel";
 
-type Stage = "setup" | "interview" | "results";
+type Stage = "setup" | "interview" | "results" | "review" | "admin";
+
+function stageFromPath(pathname: string): Stage {
+  if (pathname === "/admin") return "admin";
+  if (pathname === "/review") return "review";
+  return "setup";
+}
 type VoiceStatus = "idle" | "connecting" | "listening" | "speaking" | "error";
 type RealtimeEvent = {
   type?: string;
@@ -54,6 +62,9 @@ const defaultConfig: InterviewConfig = {
   difficulty: "Mid-level",
   duration_minutes: 15,
   custom_instructions: "",
+  candidate_name: "",
+  storage_mode: "all",
+  study_guide_section: "Python",
 };
 
 function speak(text: string, onEnd?: () => void) {
@@ -119,18 +130,23 @@ function speak(text: string, onEnd?: () => void) {
 }
 
 export default function App() {
-  const [stage, setStage] = useState<Stage>("setup");
+  const [stage, setStage] = useState<Stage>(() => stageFromPath(window.location.pathname));
   const [studyGuide, setStudyGuide] = useState("");
   const [guideSections, setGuideSections] = useState<StudyGuideSection[]>([]);
   const [selectedSection, setSelectedSection] = useState("python");
   const [guideLoading, setGuideLoading] = useState(true);
   const [config, setConfig] = useState<InterviewConfig>(defaultConfig);
   const [availableEngines, setAvailableEngines] = useState<string[]>([]);
+  const [requireAccessKey, setRequireAccessKey] = useState(false);
+  const [accessKey, setAccessKey] = useState(
+    () => window.sessionStorage.getItem("interviewer_access_key") || "",
+  );
   const [plan, setPlan] = useState<Plan | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [answer, setAnswer] = useState("");
   const [complete, setComplete] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
   const [provider, setProvider] = useState("");
   const [recruiterName, setRecruiterName] = useState(import.meta.env.VITE_RECRUITER_NAME || "Iris");
   const [loading, setLoading] = useState(false);
@@ -165,8 +181,16 @@ export default function App() {
   const browserVoiceActiveRef = useRef(false);
   const liveVoiceActiveRef = useRef(false);
   const answerRef = useRef("");
+  const messagesRef = useRef<Message[]>(messages);
+  messagesRef.current = messages;
   const submittingRef = useRef(false);
   const silenceTimerRef = useRef<number | null>(null);
+  const sessionCompletedRef = useRef(false);
+  const evaluatingRef = useRef(false);
+  const autoDebriefTimerRef = useRef<number | null>(null);
+  const pendingDebriefTranscriptRef = useRef<Message[] | null>(null);
+  const endInterviewRef = useRef<(transcriptOverride?: Message[]) => Promise<void>>(async () => {});
+  const submitBrowserAnswerRef = useRef<() => Promise<void>>(async () => {});
   const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
   useEffect(() => {
@@ -178,6 +202,7 @@ export default function App() {
         if (initial) {
           setSelectedSection(initial.id);
           setStudyGuide(initial.content);
+          setConfig((c) => ({ ...c, study_guide_section: initial.title }));
         }
       } catch (err) {
         setSelectedSection("custom");
@@ -190,6 +215,7 @@ export default function App() {
     async function initProviders() {
       try {
         const res = await api.providers();
+        setRequireAccessKey(Boolean(res.require_access_key));
         if (res.recruiter_name) {
           setRecruiterName(res.recruiter_name);
         }
@@ -219,7 +245,7 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (stage !== "interview" || isEvaluating) return;
+      if (stage !== "interview" || isEvaluating || complete) return;
       const target = e.target as HTMLElement | null;
       const isInput = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
 
@@ -232,10 +258,19 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stage, isEvaluating, textMode, muted]);
+  }, [stage, isEvaluating, complete, textMode, muted]);
 
   const updateConfig = <K extends keyof InterviewConfig>(key: K, value: InterviewConfig[K]) =>
     setConfig((current) => ({ ...current, [key]: value }));
+
+  const updateAccessKey = (value: string) => {
+    setAccessKey(value);
+    if (value.trim()) {
+      window.sessionStorage.setItem("interviewer_access_key", value);
+    } else {
+      window.sessionStorage.removeItem("interviewer_access_key");
+    }
+  };
 
   async function ensureMicrophoneStream(): Promise<MediaStream | null> {
     if (microphoneRef.current && microphoneRef.current.active) {
@@ -340,7 +375,7 @@ export default function App() {
         if (silenceTimerRef.current) window.clearTimeout(silenceTimerRef.current);
         if (combined.split(/\s+/).length >= 4) {
           silenceTimerRef.current = window.setTimeout(() => {
-            void submitBrowserAnswer();
+            void submitBrowserAnswerRef.current();
           }, 3500);
         }
       }
@@ -363,6 +398,7 @@ export default function App() {
 
       const shouldRestart =
         (liveVoiceActiveRef.current || browserVoiceActiveRef.current) &&
+        !sessionCompletedRef.current &&
         !assistantSpeakingRef.current &&
         !manuallyMutedRef.current &&
         !submittingRef.current &&
@@ -372,6 +408,7 @@ export default function App() {
         window.setTimeout(() => {
           if (
             (liveVoiceActiveRef.current || browserVoiceActiveRef.current) &&
+            !sessionCompletedRef.current &&
             !assistantSpeakingRef.current &&
             !manuallyMutedRef.current &&
             !isRecognitionActiveRef.current
@@ -387,7 +424,9 @@ export default function App() {
   }
 
   function safeStartRecognition() {
-    if (!speechSupported || manuallyMutedRef.current || assistantSpeakingRef.current) return;
+    if (!speechSupported || sessionCompletedRef.current || manuallyMutedRef.current || assistantSpeakingRef.current) {
+      return;
+    }
     const rec = getOrCreateRecognition();
     if (!rec || isRecognitionActiveRef.current) return;
 
@@ -413,16 +452,21 @@ export default function App() {
     }
   }
 
-  function cleanupVoice() {
+  function clearAutoDebriefTimer() {
+    if (autoDebriefTimerRef.current !== null) {
+      window.clearTimeout(autoDebriefTimerRef.current);
+      autoDebriefTimerRef.current = null;
+    }
+  }
+
+  function stopMicrophoneInput() {
     browserVoiceActiveRef.current = false;
     liveVoiceActiveRef.current = false;
-    submittingRef.current = false;
     if (silenceTimerRef.current) {
       window.clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
     safeStopRecognition();
-    window.speechSynthesis?.cancel();
 
     if (micAnalyserCleanupRef.current) {
       micAnalyserCleanupRef.current();
@@ -431,9 +475,33 @@ export default function App() {
 
     microphoneRef.current?.getTracks().forEach((track) => track.stop());
     microphoneRef.current = null;
+    try {
+      inputAudioContextRef.current?.close();
+    } catch {}
+    inputAudioContextRef.current = null;
+    setMicLevel(0);
+  }
+
+  function scheduleAutoDebrief(finalTranscript: Message[], delayMs: number) {
+    clearAutoDebriefTimer();
+    pendingDebriefTranscriptRef.current = finalTranscript;
+    autoDebriefTimerRef.current = window.setTimeout(() => {
+      autoDebriefTimerRef.current = null;
+      void endInterviewRef.current(pendingDebriefTranscriptRef.current ?? finalTranscript);
+    }, Math.max(0, delayMs));
+  }
+
+  function cleanupVoice() {
+    clearAutoDebriefTimer();
+    stopMicrophoneInput();
+    submittingRef.current = false;
+    window.speechSynthesis?.cancel();
+
     if (liveSocketRef.current) {
       try {
-        liveSocketRef.current.send(JSON.stringify({ type: "end_session" }));
+        if (liveSocketRef.current.readyState === WebSocket.OPEN && !sessionCompletedRef.current) {
+          liveSocketRef.current.send(JSON.stringify({ type: "end_session" }));
+        }
         liveSocketRef.current.close();
       } catch {}
       liveSocketRef.current = null;
@@ -446,10 +514,6 @@ export default function App() {
       audioContextRef.current?.close();
     } catch {}
     audioContextRef.current = null;
-    try {
-      inputAudioContextRef.current?.close();
-    } catch {}
-    inputAudioContextRef.current = null;
 
     channelRef.current?.close();
     channelRef.current = null;
@@ -533,23 +597,40 @@ export default function App() {
     transcriptFinalRef.current = "";
     setLoading(true);
 
-    const prior = messages;
+    const prior = messagesRef.current;
     const lastPrior = prior[prior.length - 1];
     const nextTranscript: Message[] =
       lastPrior?.role === "candidate" && lastPrior.content.trim() === content
         ? prior
         : [...prior, { role: "candidate" as const, content }];
     setMessages(nextTranscript);
+    messagesRef.current = nextTranscript;
 
     try {
-      const result = await api.nextTurn(plan, config, nextTranscript, content);
-      setMessages((current) => [...current, { role: "interviewer", content: result.interviewer_message }]);
+      const result = await api.nextTurn(plan, config, nextTranscript, content, accessKey);
+      const finalMessages: Message[] = [
+        ...nextTranscript,
+        { role: "interviewer", content: result.interviewer_message },
+      ];
+      setMessages(finalMessages);
+      messagesRef.current = finalMessages;
       setComplete(result.is_complete);
 
       if (result.is_complete) {
-        setVoiceStatus("idle");
-        browserVoiceActiveRef.current = false;
-        speak(result.interviewer_message);
+        sessionCompletedRef.current = true;
+        stopMicrophoneInput();
+        if (autoSpeak) {
+          assistantSpeakingRef.current = true;
+          setVoiceStatus("speaking");
+          speak(result.interviewer_message, () => {
+            assistantSpeakingRef.current = false;
+            setVoiceStatus("idle");
+            scheduleAutoDebrief(finalMessages, 400);
+          });
+        } else {
+          setVoiceStatus("idle");
+          scheduleAutoDebrief(finalMessages, 600);
+        }
       } else {
         assistantSpeakingRef.current = true;
         setVoiceStatus("speaking");
@@ -565,6 +646,7 @@ export default function App() {
       setAnswer(content);
       answerRef.current = content;
       setMessages(prior);
+      messagesRef.current = prior;
       setError(err instanceof Error ? err.message : "Unable to continue the interview.");
       setVoiceStatus("listening");
       safeStartRecognition();
@@ -573,6 +655,7 @@ export default function App() {
       submittingRef.current = false;
     }
   }
+  submitBrowserAnswerRef.current = submitBrowserAnswer;
 
   async function startVoiceInterview() {
     if (!plan || voiceStatus === "connecting") return;
@@ -664,7 +747,7 @@ export default function App() {
       await peer.setLocalDescription(offer);
       const sdp = peer.localDescription?.sdp;
       if (!sdp) throw new Error("The browser could not create a voice connection offer.");
-      const answerSdp = await api.createRealtimeCall(sdp, studyGuide, config, plan);
+      const answerSdp = await api.createRealtimeCall(sdp, studyGuide, config, plan, accessKey);
       await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     } catch (err) {
       cleanupVoice();
@@ -679,6 +762,9 @@ export default function App() {
     setError("");
     setVoiceStatus("connecting");
     setMessages([]);
+    messagesRef.current = [];
+    sessionCompletedRef.current = false;
+    pendingDebriefTranscriptRef.current = null;
     liveVoiceActiveRef.current = true;
 
     try {
@@ -698,6 +784,7 @@ export default function App() {
           JSON.stringify({
             type: "setup",
             provider: liveProvider,
+            access_key: accessKey.trim() || undefined,
             study_guide: studyGuide,
             config,
             plan,
@@ -732,6 +819,10 @@ export default function App() {
             audioQueueRef.current = audioQueueRef.current.filter((s) => s !== source);
             if (audioQueueRef.current.length === 0 || audioCtx.currentTime >= nextPlayTimeRef.current - 0.05) {
               assistantSpeakingRef.current = false;
+              if (sessionCompletedRef.current) {
+                setVoiceStatus("idle");
+                return;
+              }
               setVoiceStatus("listening");
               if (liveVoiceActiveRef.current && !manuallyMutedRef.current) {
                 safeStartRecognition();
@@ -783,6 +874,7 @@ export default function App() {
             if (data.type === "transcript_final" && data.role === "interviewer") {
               const remainingMs = Math.max(0, (nextPlayTimeRef.current - audioCtx.currentTime) * 1000) + 150;
               window.setTimeout(() => {
+                if (sessionCompletedRef.current) return;
                 if (liveVoiceActiveRef.current && assistantSpeakingRef.current) {
                   assistantSpeakingRef.current = false;
                   setVoiceStatus("listening");
@@ -793,11 +885,32 @@ export default function App() {
               }, remainingMs);
             }
           } else if (data.type === "session_completed") {
+            sessionCompletedRef.current = true;
             setComplete(true);
-            if (data.transcript && Array.isArray(data.transcript)) {
-              setMessages(data.transcript);
+            stopMicrophoneInput();
+            liveSocketRef.current = null;
+            answerRef.current = "";
+            transcriptFinalRef.current = "";
+            setAnswer("");
+
+            const serverTranscript: Message[] = Array.isArray(data.transcript) ? data.transcript : [];
+            const hasServerCandidate = serverTranscript.some((m) => m.role === "candidate");
+            const finalTranscript =
+              serverTranscript.length > 0 && hasServerCandidate ? serverTranscript : messagesRef.current;
+
+            if (finalTranscript.length > 0) {
+              setMessages(finalTranscript);
+              messagesRef.current = finalTranscript;
             }
+
+            const remainingAudioMs =
+              audioCtx.state === "running"
+                ? Math.max(0, (nextPlayTimeRef.current - audioCtx.currentTime) * 1000)
+                : 0;
+            const waitMs = Math.min(Math.ceil(remainingAudioMs) + 450, 10000);
+            scheduleAutoDebrief(finalTranscript, waitMs);
           } else if (data.type === "interrupted") {
+            if (sessionCompletedRef.current) return;
             audioQueueRef.current.forEach((src) => {
               try {
                 src.stop();
@@ -818,12 +931,15 @@ export default function App() {
       };
 
       ws.onerror = () => {
+        if (sessionCompletedRef.current) return;
         setError("Realtime audio connection error.");
         setVoiceStatus("error");
       };
 
       ws.onclose = () => {
-        setVoiceStatus("idle");
+        if (!sessionCompletedRef.current || !assistantSpeakingRef.current) {
+          setVoiceStatus("idle");
+        }
       };
     } catch (err) {
       cleanupVoice();
@@ -906,20 +1022,40 @@ export default function App() {
   async function startInterview(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (!config.candidate_name.trim()) return setError("Please enter your name before starting the interview.");
+    if (requireAccessKey && !accessKey.trim()) {
+      return setError("Please enter a valid access key before starting the interview.");
+    }
     if (studyGuide.trim().length < 20) return setError("Select a study guide section or enter at least 20 characters.");
     if (config.role === "Custom Role" && !config.custom_role.trim()) return setError("Enter your custom role.");
+    clearAutoDebriefTimer();
+    sessionCompletedRef.current = false;
+    evaluatingRef.current = false;
+    pendingDebriefTranscriptRef.current = null;
+    setComplete(false);
     setLoading(true);
     try {
       if (!textMode) {
         await ensureMicrophoneStream();
       }
       const activeProvider = config.provider || provider || "anthropic";
-      const activeConfig: InterviewConfig = { ...config, provider: activeProvider };
+      const sectionTitle =
+        selectedSection === "custom"
+          ? "Custom Notes"
+          : (guideSections.find((s) => s.id === selectedSection)?.title ?? selectedSection);
+      const activeConfig: InterviewConfig = {
+        ...config,
+        candidate_name: config.candidate_name.trim(),
+        study_guide_section: sectionTitle,
+        provider: activeProvider,
+      };
       setConfig(activeConfig);
-      const result = await api.createPlan(studyGuide, activeConfig);
+      const result = await api.createPlan(studyGuide, activeConfig, accessKey);
       setPlan(result.plan);
       setProvider(result.provider);
-      setMessages([{ role: "interviewer", content: result.opening_message }]);
+      const openingMessages: Message[] = [{ role: "interviewer", content: result.opening_message }];
+      setMessages(openingMessages);
+      messagesRef.current = openingMessages;
       setStage("interview");
 
       if (
@@ -972,43 +1108,75 @@ export default function App() {
     setAnswer("");
     transcriptFinalRef.current = "";
     setLoading(true);
-    const prior = messages;
+    const prior = messagesRef.current;
     const lastPrior = prior[prior.length - 1];
     const nextTranscript: Message[] =
       lastPrior?.role === "candidate" && lastPrior.content.trim() === content
         ? prior
         : [...prior, { role: "candidate" as const, content }];
     setMessages(nextTranscript);
+    messagesRef.current = nextTranscript;
     try {
-      const result = await api.nextTurn(plan, config, nextTranscript, content);
-      setMessages((current) => [...current, { role: "interviewer", content: result.interviewer_message }]);
+      const result = await api.nextTurn(plan, config, nextTranscript, content, accessKey);
+      const finalMessages: Message[] = [
+        ...nextTranscript,
+        { role: "interviewer", content: result.interviewer_message },
+      ];
+      setMessages(finalMessages);
+      messagesRef.current = finalMessages;
       setComplete(result.is_complete);
-      if (autoSpeak) speak(result.interviewer_message);
+      if (result.is_complete) {
+        sessionCompletedRef.current = true;
+        if (autoSpeak) {
+          assistantSpeakingRef.current = true;
+          setVoiceStatus("speaking");
+          speak(result.interviewer_message, () => {
+            assistantSpeakingRef.current = false;
+            setVoiceStatus("idle");
+            scheduleAutoDebrief(finalMessages, 400);
+          });
+        } else {
+          scheduleAutoDebrief(finalMessages, 800);
+        }
+      } else if (autoSpeak) {
+        speak(result.interviewer_message);
+      }
     } catch (err) {
       setAnswer(content);
       setMessages(prior);
+      messagesRef.current = prior;
       setError(err instanceof Error ? err.message : "Unable to continue.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function endInterview() {
-    let currentMessages = messages;
+  async function endInterview(transcriptOverride?: Message[]) {
+    if (evaluatingRef.current) return;
+    clearAutoDebriefTimer();
+
+    const override = Array.isArray(transcriptOverride) ? transcriptOverride : undefined;
+    let currentMessages = override ?? pendingDebriefTranscriptRef.current ?? messagesRef.current;
+
     const pending = (answerRef.current || answer).trim();
-    if (pending) {
+    if (pending && !sessionCompletedRef.current) {
       const lastMsg = currentMessages[currentMessages.length - 1];
       if (!lastMsg || lastMsg.role !== "candidate" || lastMsg.content.trim() !== pending) {
         currentMessages = [...currentMessages, { role: "candidate", content: pending }];
         setMessages(currentMessages);
+        messagesRef.current = currentMessages;
       }
-      answerRef.current = "";
-      transcriptFinalRef.current = "";
-      setAnswer("");
+    }
+    answerRef.current = "";
+    transcriptFinalRef.current = "";
+    setAnswer("");
+
+    if (!plan || currentMessages.every((m) => m.role !== "candidate")) {
+      return setError("Answer at least one question before ending the interview.");
     }
 
-    if (!plan || currentMessages.every((m) => m.role !== "candidate"))
-      return setError("Answer at least one question before ending the interview.");
+    evaluatingRef.current = true;
+    pendingDebriefTranscriptRef.current = null;
     setError("");
     setLoading(true);
     setIsEvaluating(true);
@@ -1019,24 +1187,36 @@ export default function App() {
         ...config,
         provider: config.provider || provider,
       };
-      const result = await api.evaluate(studyGuide, evalConfig, plan, currentMessages);
+      const result = await api.evaluate(studyGuide, evalConfig, plan, currentMessages, accessKey);
       setEvaluation(result.evaluation);
+      setSavedSessionId(result.saved_session_id ?? null);
       setProvider(result.provider);
       setStage("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create feedback.");
     } finally {
+      evaluatingRef.current = false;
       setLoading(false);
       setIsEvaluating(false);
     }
   }
+  endInterviewRef.current = endInterview;
 
   function reset() {
+    clearAutoDebriefTimer();
+    sessionCompletedRef.current = false;
+    evaluatingRef.current = false;
+    pendingDebriefTranscriptRef.current = null;
     window.speechSynthesis?.cancel();
+    if (window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
     setStage("setup");
     setPlan(null);
     setMessages([]);
+    messagesRef.current = [];
     setEvaluation(null);
+    setSavedSessionId(null);
     setComplete(false);
     setError("");
     setAnswer("");
@@ -1045,9 +1225,38 @@ export default function App() {
     cleanupVoice();
   }
 
+  function openReview() {
+    window.speechSynthesis?.cancel();
+    cleanupVoice();
+    setError("");
+    if (window.location.pathname !== "/review") {
+      window.history.pushState({}, "", "/review");
+    }
+    setStage("review");
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      window.speechSynthesis?.cancel();
+      cleanupVoice();
+      setError("");
+      setStage(stageFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   return (
     <div className="h-screen max-h-screen overflow-hidden flex flex-col bg-[#060A14] text-slate-200 font-sans">
-      <Topbar provider={provider} stage={stage} onReset={reset} />
+      <Topbar
+        provider={provider}
+        stage={stage}
+        storageMode={config.storage_mode}
+        candidateName={config.candidate_name}
+        onReset={reset}
+        onOpenReview={openReview}
+      />
 
       <main className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-3 flex-1 min-h-0 flex flex-col overflow-hidden">
         {isEvaluating && <EvaluatingOverlay />}
@@ -1072,6 +1281,9 @@ export default function App() {
             loading={loading}
             error={error}
             recruiterName={recruiterName}
+            requireAccessKey={requireAccessKey}
+            accessKey={accessKey}
+            setAccessKey={updateAccessKey}
             startInterview={startInterview}
           />
         )}
@@ -1098,13 +1310,26 @@ export default function App() {
             onSpeak={speak}
             onSkipSpeech={() => {
               window.speechSynthesis?.cancel();
+              audioQueueRef.current.forEach((src) => {
+                try { src.stop(); } catch {}
+              });
+              audioQueueRef.current = [];
+              if (audioContextRef.current) {
+                nextPlayTimeRef.current = audioContextRef.current.currentTime;
+              }
               assistantSpeakingRef.current = false;
+              if (sessionCompletedRef.current) {
+                setVoiceStatus("idle");
+                clearAutoDebriefTimer();
+                void endInterview(pendingDebriefTranscriptRef.current ?? undefined);
+                return;
+              }
               setVoiceStatus("listening");
               safeStartRecognition();
             }}
             onToggleMute={toggleMute}
             onSubmitAnswer={submitAnswer}
-            onEndInterview={endInterview}
+            onEndInterview={() => void endInterview()}
           />
         )}
 
@@ -1112,9 +1337,17 @@ export default function App() {
           <Debrief
             evaluation={evaluation}
             provider={provider}
+            candidateName={config.candidate_name}
+            storageMode={config.storage_mode}
+            savedSessionId={savedSessionId}
             onReset={reset}
+            onOpenReview={openReview}
           />
         )}
+
+        {stage === "review" && <ReviewArchive onStartNew={reset} />}
+
+        {stage === "admin" && <AdminPanel onBack={reset} />}
       </main>
 
       <footer className="text-center text-[11px] text-slate-500 py-2 border-t border-blue-500/10 shrink-0">

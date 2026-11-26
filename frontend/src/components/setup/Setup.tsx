@@ -1,5 +1,13 @@
-import React, { FormEvent } from "react";
-import type { AudioMode, Difficulty, InterviewConfig, Mode, Role, StudyGuideSection } from "../../types";
+import React, { FormEvent, useState } from "react";
+import type {
+  AudioMode,
+  Difficulty,
+  InterviewConfig,
+  Mode,
+  Role,
+  StorageMode,
+  StudyGuideSection,
+} from "../../types";
 import {
   Select,
   SelectContent,
@@ -9,7 +17,7 @@ import {
 } from "../ui/select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { Switch } from "../ui/switch";
-import { Sparkles, BookOpen, Cpu, ArrowRight } from "lucide-react";
+import { Sparkles, BookOpen, Cpu, ArrowRight, UserCheck, KeyRound, Eye, EyeOff } from "lucide-react";
 
 interface SetupProps {
   config: InterviewConfig;
@@ -30,6 +38,9 @@ interface SetupProps {
   loading: boolean;
   error: string;
   recruiterName?: string;
+  requireAccessKey?: boolean;
+  accessKey?: string;
+  setAccessKey?: (val: string) => void;
   startInterview: (e: FormEvent) => void;
 }
 
@@ -60,6 +71,23 @@ const DURATION_OPTIONS = [
   { value: 30, label: "30 min" },
   { value: 45, label: "45 min" },
 ];
+
+const STORAGE_OPTIONS: { value: StorageMode; label: string }[] = [
+  { value: "all", label: "My Answers + Senior" },
+  { value: "senior_only", label: "Senior Only" },
+  { value: "none", label: "Don't Save" },
+];
+
+function getStorageHelperText(mode: StorageMode): string {
+  switch (mode) {
+    case "all":
+      return "Saves your name, questions, your answers, score, and LLM senior answers to the shared read-only Review Archive.";
+    case "senior_only":
+      return "Saves only the questions and LLM senior answers to the shared read-only archive — your personal answers and score are NOT stored.";
+    case "none":
+      return "Private session — nothing from this session will be stored in the database.";
+  }
+}
 
 function getEngineLabel(engine: string): string {
   switch (engine.toLowerCase()) {
@@ -95,8 +123,12 @@ export const Setup: React.FC<SetupProps> = ({
   loading,
   error,
   recruiterName = "Iris",
+  requireAccessKey = false,
+  accessKey = "",
+  setAccessKey,
   startInterview,
 }) => {
+  const [showKey, setShowKey] = useState(false);
   const engineList = availableEngines.length > 0
     ? availableEngines
     : ["gemini", "anthropic", "openai", "mock"];
@@ -104,7 +136,7 @@ export const Setup: React.FC<SetupProps> = ({
   const activeEngine = config.provider || provider || engineList[0];
 
   return (
-    <div className="h-full flex flex-col justify-center gap-4 min-h-0">
+    <div className="flex-1 min-h-0 overflow-y-auto py-2 pr-1 flex flex-col gap-4">
       {/* Compact Top Header */}
       <header className="flex items-center justify-between pb-3 border-b border-blue-500/15 shrink-0">
         <div className="flex items-center gap-3.5">
@@ -122,7 +154,87 @@ export const Setup: React.FC<SetupProps> = ({
       </header>
 
       {/* Unified 2-Column Cockpit Form */}
-      <form className="grid grid-cols-1 md:grid-cols-12 gap-5 w-full max-w-[1240px] mx-auto" onSubmit={startInterview}>
+      <form className="grid grid-cols-1 md:grid-cols-12 gap-4 w-full max-w-[1240px] mx-auto" onSubmit={startInterview}>
+
+        {/* TOP BAR: Candidate Name & Database Storage Preferences */}
+        <div className="md:col-span-12 bg-[#0E1626] border border-blue-500/20 hover:border-blue-500/35 rounded-[18px] p-5 shadow-2xl flex flex-col gap-3.5 transition-colors">
+          <div className="flex items-center gap-3 pb-2.5 border-b border-white/10">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+              <UserCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white leading-tight">
+                Before You Start — Candidate &amp; Storage Preferences
+              </h3>
+              <p className="text-[12.5px] text-slate-400 mt-0.5">
+                Tell us who is taking this interview and choose what to save in the review archive
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+            <div className="md:col-span-5 flex flex-col gap-1.5">
+              <label htmlFor="candidate-name-input" className="text-[13px] font-semibold text-slate-200">
+                Your Name <span className="text-sky-400">*</span>
+              </label>
+              <input
+                id="candidate-name-input"
+                type="text"
+                className="bg-[#080D1A] border border-blue-500/20 rounded-[10px] px-3.5 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors w-full"
+                value={config.candidate_name}
+                onChange={(e) => updateConfig("candidate_name", e.target.value)}
+                placeholder="Enter your name (e.g. Alex Rivera)"
+                maxLength={100}
+              />
+            </div>
+
+            <div className="md:col-span-7 flex flex-col gap-1.5">
+              <label className="text-[13px] font-semibold text-slate-200">Response Storage</label>
+              <SegmentedControl<StorageMode>
+                options={STORAGE_OPTIONS}
+                value={config.storage_mode}
+                onChange={(val) => updateConfig("storage_mode", val)}
+              />
+              <p className="text-xs text-slate-400 mt-0.5">
+                {getStorageHelperText(config.storage_mode)}
+              </p>
+            </div>
+          </div>
+
+          {requireAccessKey && setAccessKey && (
+            <div className="pt-3 border-t border-white/10 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+              <div className="md:col-span-5 flex flex-col gap-1">
+                <label htmlFor="access-key-input" className="text-[13px] font-semibold text-slate-200 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Access Key <span className="text-sky-400">*</span></span>
+                </label>
+                <p className="text-xs text-slate-400">
+                  Required by the server to start interviews using shared AI credits.
+                </p>
+              </div>
+              <div className="md:col-span-7 relative">
+                <input
+                  id="access-key-input"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  className="bg-[#080D1A] border border-amber-500/30 rounded-[10px] pl-3.5 pr-10 py-2 h-[42px] text-sm text-white placeholder-slate-500 font-mono outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors w-full"
+                  value={accessKey}
+                  onChange={(e) => setAccessKey(e.target.value)}
+                  placeholder="Paste your invite access key (e.g. inai_...)"
+                  maxLength={128}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((prev) => !prev)}
+                  title={showKey ? "Hide access key" : "Show access key"}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 cursor-pointer"
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         
         {/* LEFT COLUMN (58%): Interview Parameters & Calibration */}
         <div className="md:col-span-7 bg-[#0E1626] border border-blue-500/15 hover:border-blue-500/35 rounded-[18px] p-6 shadow-2xl flex flex-col gap-4 transition-colors">
@@ -148,8 +260,11 @@ export const Setup: React.FC<SetupProps> = ({
                   setSelectedSection(val);
                   if (val === "custom") {
                     setStudyGuide("");
+                    updateConfig("study_guide_section", "Custom Notes");
                   } else {
-                    setStudyGuide(guideSections.find((s) => s.id === val)?.content ?? "");
+                    const matched = guideSections.find((s) => s.id === val);
+                    setStudyGuide(matched?.content ?? "");
+                    updateConfig("study_guide_section", matched?.title ?? val);
                   }
                 }}
               >
