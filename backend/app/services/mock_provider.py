@@ -74,13 +74,11 @@ class MockProvider(AIProvider):
         return plan, opening
 
     async def next_turn(self, request: NextTurnRequest) -> tuple[str, bool]:
-        answered = 1 + sum(
-            1 for message in request.transcript if message.role == "candidate"
-        )
+        answered = self.count_answered_turns(request.transcript, request.candidate_answer)
         complete = answered >= request.plan.estimated_turns
         if complete:
             return (
-                "Thanks—that concludes the interview. End the session when you’re ready to review your feedback.",
+                "Thanks—that concludes the interview. Starting your evaluation debrief now.",
                 True,
             )
         answer = request.candidate_answer.strip()

@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 
 from fastapi import WebSocket
@@ -14,6 +15,33 @@ from app.schemas import (
     PlanRequest,
 )
 from app.services.prompts import build_evaluation_prompt
+
+_STRONG_CLOSING_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:that|this)\s+concludes\s+(?:our|the|this)\s+(?:practice\s+)?(?:interview|session)\b",
+        r"\b(?:the|our|this)\s+(?:practice\s+)?(?:interview|session)\s+is\s+(?:now\s+)?(?:concluded|complete|completed|finished|over)\b",
+        r"\b(?:that|this)\s+wraps\s+up\s+(?:our|the|this)\s+(?:practice\s+)?(?:interview|session)\b",
+        r"\b(?:the\s+)?end\s+of\s+(?:our|the|this)\s+(?:practice\s+)?(?:interview|session)\b",
+        r"\bwe(?:'ve|\s+have)\s+(?:completed|finished|covered)\s+all\s+(?:of\s+)?(?:the|our|my)\s+(?:planned\s+)?questions\b",
+        r"\bthat(?:'s|\s+is)\s+all\s+(?:of\s+)?(?:the|our|my)\s+(?:planned\s+)?questions\b",
+        r"\bgoodbye\b",
+        r"\bfarewell\b",
+        r"\bbye\s+for\s+now\b",
+    )
+)
+
+_SOFT_FAREWELL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bbye\b",
+        r"\btake\s+care\b",
+        r"\bgood\s+luck\b",
+        r"\bhave\s+a\s+(?:great|good|wonderful|nice)\s+(?:day|evening|weekend|rest)\b",
+        r"\bthank(?:s|\s+you)\s+for\s+(?:your\s+time\s+today|joining\s+(?:me|us)\s+today|participating\s+in\s+(?:this|the)\s+interview)\b",
+        r"\b(?:debrief|evaluation|feedback|scorecard)\s+(?:is\s+starting|will\s+start|will\s+begin|is\s+ready)\b",
+    )
+)
 
 
 class AIProvider(ABC):
@@ -53,8 +81,32 @@ class AIProvider(ABC):
     def next_turn_system_prompt(self) -> str:
         return (
             "Act as a supportive but realistic interviewer. Briefly react, then ask one planned question. "
-            "Mark complete when estimated turns are answered. Do not provide evaluation yet."
+            "When all estimated turns or planned questions are answered, deliver a single brief closing "
+            "statement with no further questions and set is_complete to true. Do not provide evaluation yet."
         )
+
+    @staticmethod
+    def is_closing_interviewer_message(text: str, candidate_turns: int, total_questions: int) -> bool:
+        """Detect when an interviewer utterance clearly closes the interview with no follow-up question."""
+        if candidate_turns < 1 or not text or not text.strip() or "?" in text:
+            return False
+        normalized = " ".join(text.split())
+        if any(pattern.search(normalized) for pattern in _STRONG_CLOSING_PATTERNS):
+            return True
+        if candidate_turns >= max(1, total_questions):
+            return any(pattern.search(normalized) for pattern in _SOFT_FAREWELL_PATTERNS)
+        return False
+
+    @staticmethod
+    def count_answered_turns(transcript: list[Message], candidate_answer: str) -> int:
+        """Count answered candidate turns without double-counting if transcript already ends with candidate_answer."""
+        candidate_count = sum(1 for item in transcript if item.role == "candidate")
+        already_included = (
+            bool(transcript)
+            and transcript[-1].role == "candidate"
+            and transcript[-1].content.strip() == candidate_answer.strip()
+        )
+        return candidate_count if already_included else candidate_count + 1
 
     @staticmethod
     def build_answer_pairs(

@@ -1,5 +1,7 @@
 import asyncio
 import json
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -306,3 +308,197 @@ async def test_gemini_handle_realtime_audio_session() -> None:
     assert transcript[0].content == "Hello candidate, let us start."
 
 
+def _gemini_server_msg(
+    *,
+    text: str | None = None,
+    audio: bytes | None = None,
+    output_transcription: str | None = None,
+    input_transcription: str | None = None,
+    turn_complete: bool = False,
+    function_calls: list[Any] | None = None,
+) -> SimpleNamespace:
+    parts = []
+    if audio is not None:
+        parts.append(SimpleNamespace(inline_data=SimpleNamespace(data=audio), text=None))
+    if text is not None:
+        parts.append(SimpleNamespace(inline_data=None, text=text))
+
+    server_content = (
+        SimpleNamespace(
+            interrupted=False,
+            model_turn=SimpleNamespace(parts=parts) if parts else None,
+            output_transcription=SimpleNamespace(text=output_transcription) if output_transcription else None,
+            interim_input_transcription=None,
+            input_transcription=SimpleNamespace(text=input_transcription) if input_transcription else None,
+            turn_complete=turn_complete,
+        )
+        if any([parts, output_transcription, input_transcription, turn_complete])
+        else None
+    )
+    tool_call = SimpleNamespace(function_calls=function_calls) if function_calls is not None else None
+    return SimpleNamespace(server_content=server_content, tool_call=tool_call)
+
+
+def _gemini_realtime_plan_and_config() -> tuple[InterviewPlan, InterviewConfig]:
+    plan = InterviewPlan(
+        title="T",
+        summary="S",
+        focus_areas=["AsyncIO"],
+        questions=["Explain asyncio."],
+        estimated_turns=1,
+    )
+    config = InterviewConfig(
+        role=Role.software_engineer,
+        mode=InterviewMode.technical,
+        difficulty=Difficulty.senior,
+        duration_minutes=10,
+    )
+    return plan, config
+
+
+@pytest.mark.asyncio
+async def test_gemini_realtime_ends_on_end_interview_tool_with_audio() -> None:
+    provider = GeminiProvider(api_key="test-key", recruiter_name="Iris")
+
+    mock_ws = MagicMock()
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+
+    async def ws_receive():
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws.receive = AsyncMock(side_effect=ws_receive)
+
+    mock_session = AsyncMock()
+
+    async def mock_receive_gen():
+        yield _gemini_server_msg(text="Explain asyncio.", turn_complete=True)
+        yield _gemini_server_msg(input_transcription="It schedules coroutines on an event loop.")
+        yield _gemini_server_msg(
+            audio=b"\x01\x02",
+            output_transcription="Thank you! Your debrief is starting now.",
+        )
+        yield _gemini_server_msg(
+            function_calls=[SimpleNamespace(id="fn_1", name="end_interview")],
+        )
+
+    mock_session.receive = mock_receive_gen
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_session
+    mock_connect_cm.__aexit__.return_value = None
+    provider.client.aio.live.connect = MagicMock(return_value=mock_connect_cm)
+
+    plan, config = _gemini_realtime_plan_and_config()
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "It schedules coroutines on an event loop."),
+        ("interviewer", "Thank you! Your debrief is starting now."),
+    ]
+    mock_session.send_tool_response.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_gemini_realtime_ends_on_silent_end_interview_tool_triggers_farewell() -> None:
+    provider = GeminiProvider(api_key="test-key", recruiter_name="Iris")
+
+    mock_ws = MagicMock()
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+
+    async def ws_receive():
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws.receive = AsyncMock(side_effect=ws_receive)
+
+    mock_session = AsyncMock()
+    tool_response_sent = asyncio.Event()
+
+    async def record_tool_response(**_kwargs: Any) -> None:
+        tool_response_sent.set()
+
+    mock_session.send_tool_response = AsyncMock(side_effect=record_tool_response)
+
+    async def mock_receive_gen():
+        yield _gemini_server_msg(text="Explain asyncio.", turn_complete=True)
+        yield _gemini_server_msg(input_transcription="Event loop runs non-blocking I/O.")
+        yield _gemini_server_msg(
+            function_calls=[SimpleNamespace(id="fn_silent", name="end_interview")],
+        )
+        await tool_response_sent.wait()
+        yield _gemini_server_msg(
+            audio=b"\x03\x04",
+            output_transcription="Thanks for your time! Starting your debrief.",
+            turn_complete=True,
+        )
+
+    mock_session.receive = mock_receive_gen
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_session
+    mock_connect_cm.__aexit__.return_value = None
+    provider.client.aio.live.connect = MagicMock(return_value=mock_connect_cm)
+
+    plan, config = _gemini_realtime_plan_and_config()
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    mock_session.send_tool_response.assert_awaited_once()
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "Event loop runs non-blocking I/O."),
+        ("interviewer", "Thanks for your time! Starting your debrief."),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_gemini_realtime_fallback_ends_on_verbal_goodbye_without_tool() -> None:
+    provider = GeminiProvider(api_key="test-key", recruiter_name="Iris")
+
+    mock_ws = MagicMock()
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+
+    async def ws_receive():
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws.receive = AsyncMock(side_effect=ws_receive)
+
+    mock_session = AsyncMock()
+
+    async def mock_receive_gen():
+        yield _gemini_server_msg(text="Explain asyncio.", turn_complete=True)
+        yield _gemini_server_msg(input_transcription="Cooperative multitasking on one thread.")
+        yield _gemini_server_msg(
+            output_transcription="That concludes our interview. Goodbye!",
+            turn_complete=True,
+        )
+
+    mock_session.receive = mock_receive_gen
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_session
+    mock_connect_cm.__aexit__.return_value = None
+    provider.client.aio.live.connect = MagicMock(return_value=mock_connect_cm)
+
+    plan, config = _gemini_realtime_plan_and_config()
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "Cooperative multitasking on one thread."),
+        ("interviewer", "That concludes our interview. Goodbye!"),
+    ]

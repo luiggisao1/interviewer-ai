@@ -490,6 +490,7 @@ async def test_openai_handle_realtime_audio_session() -> None:
     expected_interrupt_phrases = ["not interrupt", "do not interrupt", "never interrupt", "avoid interrupting"]
     assert any(phrase in instructions_lower for phrase in expected_interrupt_phrases)
     assert "brief pause" in instructions_lower
+    assert any(tool.get("name") == "end_interview" for tool in session_dict.get("tools", []))
 
     mock_ws.send_json.assert_any_await({
         "type": "session_started",
@@ -528,3 +529,284 @@ async def test_openai_handle_realtime_audio_session() -> None:
     assert interviewer_turns[0].content == "Hello, let's start."
     assert len(candidate_turns) == 1
     assert candidate_turns[0].content == "Event loop uses epoll."
+
+
+class _FakeRealtimeEvent:
+    def __init__(self, type_: str, **kwargs: Any) -> None:
+        self.type = type_
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+def _make_realtime_mocks(event_factory: Any, ws_receive: Any):
+    mock_ws = MagicMock()
+    mock_ws.send_json = AsyncMock()
+    mock_ws.send_bytes = AsyncMock()
+    mock_ws.receive = AsyncMock(side_effect=ws_receive)
+
+    mock_connection = MagicMock()
+    mock_connection.session = AsyncMock()
+    mock_connection.response = AsyncMock()
+    mock_connection.input_audio_buffer = AsyncMock()
+    mock_connection.conversation = MagicMock()
+    mock_connection.conversation.item = AsyncMock()
+    mock_connection.__aiter__ = MagicMock(side_effect=event_factory)
+
+    mock_connect_cm = AsyncMock()
+    mock_connect_cm.__aenter__.return_value = mock_connection
+    mock_connect_cm.__aexit__.return_value = None
+
+    mock_realtime = MagicMock()
+    mock_realtime.connect = MagicMock(return_value=mock_connect_cm)
+    return mock_ws, mock_connection, mock_realtime
+
+
+def _realtime_plan_and_config(questions: list[str] | None = None) -> tuple[InterviewPlan, InterviewConfig]:
+    q_list = questions or ["How does asyncio scheduling work?"]
+    plan = InterviewPlan(
+        title="Senior Python Practice",
+        summary="Concurrency",
+        focus_areas=["AsyncIO"],
+        questions=q_list,
+        estimated_turns=len(q_list),
+    )
+    config = InterviewConfig(
+        role=Role.backend_engineer,
+        mode=InterviewMode.technical,
+        difficulty=Difficulty.senior,
+        duration_minutes=10,
+    )
+    return plan, config
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_ends_on_end_interview_tool_with_audio() -> None:
+    provider = OpenAIProvider(api_key="test-key", recruiter_name="Iris")
+    server_pcm = b"\x01\x02\x03\x04"
+    b64_server_pcm = base64.b64encode(server_pcm).decode("ascii")
+    pre_end_pcm = b"\x10\x20"
+    post_end_pcm = b"\x99\x88"
+    pre_audio_sent = asyncio.Event()
+    end_tool_seen = asyncio.Event()
+    post_audio_attempted = asyncio.Event()
+
+    async def event_stream():
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio.delta", delta=b64_server_pcm)
+        yield _FakeRealtimeEvent("response.output_audio_transcript.done", transcript="Explain asyncio.")
+        yield _FakeRealtimeEvent("response.done")
+        await pre_audio_sent.wait()
+        yield _FakeRealtimeEvent("input_audio_buffer.committed", item_id="item_1")
+        yield _FakeRealtimeEvent(
+            "conversation.item.input_audio_transcription.completed",
+            item_id="item_1",
+            transcript="Cooperative multitasking.",
+        )
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio.delta", delta=b64_server_pcm)
+        yield _FakeRealtimeEvent(
+            "response.output_audio_transcript.done",
+            transcript="Thank you! The interview is concluded and your debrief is starting now.",
+        )
+        yield _FakeRealtimeEvent(
+            "response.function_call_arguments.done",
+            name="end_interview",
+            call_id="call_1",
+            arguments='{"reason": "all answered"}',
+        )
+        end_tool_seen.set()
+        await post_audio_attempted.wait()
+        yield _FakeRealtimeEvent("response.done")
+
+    sent_batches = [
+        {"bytes": pre_end_pcm},
+        {"bytes": post_end_pcm},
+    ]
+
+    async def ws_receive() -> dict[str, Any]:
+        if len(sent_batches) == 2:
+            msg = sent_batches.pop(0)
+            asyncio.get_running_loop().call_later(0.01, pre_audio_sent.set)
+            return msg
+        if len(sent_batches) == 1:
+            await end_tool_seen.wait()
+            msg = sent_batches.pop(0)
+            asyncio.get_running_loop().call_later(0.02, post_audio_attempted.set)
+            return msg
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws, mock_connection, mock_realtime = _make_realtime_mocks(event_stream, ws_receive)
+    provider.client.realtime = mock_realtime
+    plan, config = _realtime_plan_and_config()
+
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "Cooperative multitasking."),
+        ("interviewer", "Thank you! The interview is concluded and your debrief is starting now."),
+    ]
+    appended_payloads = [call.kwargs["audio"] for call in mock_connection.input_audio_buffer.append.await_args_list]
+    assert base64.b64encode(pre_end_pcm).decode("ascii") in appended_payloads
+    assert base64.b64encode(post_end_pcm).decode("ascii") not in appended_payloads
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_ends_on_silent_end_interview_tool_triggers_farewell() -> None:
+    provider = OpenAIProvider(api_key="test-key", recruiter_name="Iris")
+    server_pcm = b"\x05\x06"
+    b64_server_pcm = base64.b64encode(server_pcm).decode("ascii")
+    farewell_requested = asyncio.Event()
+
+    async def event_stream():
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio_transcript.done", transcript="Explain asyncio.")
+        yield _FakeRealtimeEvent("response.done")
+        yield _FakeRealtimeEvent("input_audio_buffer.committed", item_id="item_1")
+        yield _FakeRealtimeEvent(
+            "conversation.item.input_audio_transcription.completed",
+            item_id="item_1",
+            transcript="Event loop schedules coroutines.",
+        )
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent(
+            "response.function_call_arguments.done",
+            name="end_interview",
+            call_id="call_end",
+            arguments='{"reason": "completed"}',
+        )
+        yield _FakeRealtimeEvent("response.done")
+        await farewell_requested.wait()
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio.delta", delta=b64_server_pcm)
+        yield _FakeRealtimeEvent(
+            "response.output_audio_transcript.done",
+            transcript="Thanks for your answers! Starting your debrief now.",
+        )
+        yield _FakeRealtimeEvent("response.done")
+
+    async def ws_receive() -> dict[str, Any]:
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws, mock_connection, mock_realtime = _make_realtime_mocks(event_stream, ws_receive)
+    create_calls: list[dict[str, Any]] = []
+
+    async def record_response_create(**kwargs: Any) -> None:
+        create_calls.append(kwargs)
+        if len(create_calls) == 2:
+            farewell_requested.set()
+
+    mock_connection.response.create = AsyncMock(side_effect=record_response_create)
+    provider.client.realtime = mock_realtime
+    plan, config = _realtime_plan_and_config()
+
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    mock_connection.conversation.item.create.assert_awaited_once()
+    item_arg = mock_connection.conversation.item.create.await_args.kwargs["item"]
+    assert item_arg["type"] == "function_call_output"
+    assert item_arg["call_id"] == "call_end"
+    assert len(create_calls) == 2
+    assert create_calls[1]["response"]["tool_choice"] == "none"
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "Event loop schedules coroutines."),
+        ("interviewer", "Thanks for your answers! Starting your debrief now."),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_preserves_delayed_final_candidate_transcription() -> None:
+    provider = OpenAIProvider(api_key="test-key", recruiter_name="Iris")
+
+    async def event_stream():
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio_transcript.done", transcript="Explain asyncio.")
+        yield _FakeRealtimeEvent("response.done")
+        yield _FakeRealtimeEvent("input_audio_buffer.committed", item_id="item_final")
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent(
+            "response.output_audio_transcript.done",
+            transcript="Thank you, that concludes our interview.",
+        )
+        yield _FakeRealtimeEvent(
+            "response.function_call_arguments.done",
+            name="end_interview",
+            call_id="call_done",
+            arguments='{"reason": "done"}',
+        )
+        yield _FakeRealtimeEvent("response.done")
+        await asyncio.sleep(0.02)
+        yield _FakeRealtimeEvent(
+            "conversation.item.input_audio_transcription.completed",
+            item_id="item_final",
+            transcript="Final answer",
+        )
+
+    async def ws_receive() -> dict[str, Any]:
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws, _mock_connection, mock_realtime = _make_realtime_mocks(event_stream, ws_receive)
+    provider.client.realtime = mock_realtime
+    plan, config = _realtime_plan_and_config()
+
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "Final answer"),
+        ("interviewer", "Thank you, that concludes our interview."),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_fallback_ends_on_verbal_goodbye_without_tool() -> None:
+    provider = OpenAIProvider(api_key="test-key", recruiter_name="Iris")
+
+    async def event_stream():
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent("response.output_audio_transcript.done", transcript="Explain asyncio.")
+        yield _FakeRealtimeEvent("response.done")
+        yield _FakeRealtimeEvent("input_audio_buffer.committed", item_id="item_1")
+        yield _FakeRealtimeEvent(
+            "conversation.item.input_audio_transcription.completed",
+            item_id="item_1",
+            transcript="AsyncIO runs tasks cooperatively.",
+        )
+        yield _FakeRealtimeEvent("response.created")
+        yield _FakeRealtimeEvent(
+            "response.output_audio_transcript.done",
+            transcript="Thank you! That concludes our interview. Goodbye.",
+        )
+        yield _FakeRealtimeEvent("response.done")
+
+    async def ws_receive() -> dict[str, Any]:
+        while True:
+            await asyncio.sleep(1)
+
+    mock_ws, _mock_connection, mock_realtime = _make_realtime_mocks(event_stream, ws_receive)
+    provider.client.realtime = mock_realtime
+    plan, config = _realtime_plan_and_config()
+
+    transcript = await asyncio.wait_for(
+        provider.handle_realtime_audio_session(mock_ws, plan, config, "AsyncIO guide."),
+        timeout=3.0,
+    )
+
+    assert [(m.role, m.content) for m in transcript] == [
+        ("interviewer", "Explain asyncio."),
+        ("candidate", "AsyncIO runs tasks cooperatively."),
+        ("interviewer", "Thank you! That concludes our interview. Goodbye."),
+    ]

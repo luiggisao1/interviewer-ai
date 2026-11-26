@@ -24,6 +24,7 @@ from app.schemas import (
     StoredSessionDetail,
     StoredSessionSummary,
 )
+from app.services.base import AIProvider
 from app.services.factory import create_provider
 from app.study_guide import StudyGuideSection, load_study_guide_sections
 
@@ -87,7 +88,11 @@ async def next_turn(
     provider = create_provider(config, request.config.provider)
     try:
         message, complete = await provider.next_turn(request)
-        answered = 1 + sum(1 for item in request.transcript if item.role == "candidate")
+        answered = AIProvider.count_answered_turns(request.transcript, request.candidate_answer)
+        if not complete and AIProvider.is_closing_interviewer_message(
+            message, candidate_turns=answered, total_questions=len(request.plan.questions)
+        ):
+            complete = True
         return NextTurnResponse(
             interviewer_message=message, is_complete=complete, turn_number=answered
         )

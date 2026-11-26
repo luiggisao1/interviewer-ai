@@ -16,6 +16,8 @@ from openai.types.realtime import (
     RealtimeAudioConfigInputParam,
     RealtimeAudioConfigOutputParam,
     RealtimeAudioConfigParam,
+    RealtimeConversationItemFunctionCallOutputParam,
+    RealtimeFunctionToolParam,
     RealtimeResponseCreateParamsParam,
     RealtimeSessionCreateRequestParam,
 )
@@ -84,8 +86,14 @@ class OpenAIProvider(AIProvider):
         diff = config.difficulty.value
         questions = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(plan.questions))
 
+        candidate = config.candidate_name.strip()
+        candidate_line = (
+            f"The candidate's name is {candidate}. Address them warmly by name.\n" if candidate else ""
+        )
+
         instructions = (
             f"Your name is {self.recruiter_name}. You are conducting a spoken {diff} {role} practice interview.\n"
+            f"{candidate_line}"
             f"Use only the supplied study guide as your technical ground truth.\n"
             f"Ask one concise question at a time and follow the planned questions in order:\n{questions}\n"
             "Listen patiently to natural pauses, thoughtful hesitation, and non-native English. "
@@ -94,11 +102,37 @@ class OpenAIProvider(AIProvider):
             "Keep spoken responses concise (1-2 sentences), then wait for the candidate's answer.\n"
             f"Start immediately by introducing yourself briefly as {self.recruiter_name} "
             "and asking the first interview question.\n"
-            "When all planned questions are completed, state that the interview is concluded.\n\n"
+            f"There are {len(plan.questions)} planned questions in total. "
+            "Keep track of them and ask each one in order.\n"
+            "Once the candidate has finished answering the final planned question, give a single brief closing "
+            "remark thanking them and stating that the interview is concluded and their debrief is starting now, "
+            "and immediately call the `end_interview` tool. "
+            "Do not ask if the candidate has any questions, and do not continue talking or repeating goodbyes.\n\n"
             f"Study guide content:\n{study_guide[:15000]}"
         )
 
-        transcript: list[Message] = []
+        end_interview_tool = RealtimeFunctionToolParam(
+            type="function",
+            name="end_interview",
+            description=(
+                "Conclude the interview session and automatically start the candidate's evaluation debrief. "
+                "Call this immediately after the candidate answers the final planned question."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": (
+                            "Brief reason the interview is concluding "
+                            "(e.g., all planned questions answered)."
+                        ),
+                    }
+                },
+                "required": ["reason"],
+            },
+        )
+
         current_interviewer_text: list[str] = []
         kickoff_message = (
             f"Please start the interview now by introducing yourself briefly as {self.recruiter_name} "
@@ -106,12 +140,47 @@ class OpenAIProvider(AIProvider):
         )
 
         async def _run_live_session(kickoff_prompt: str) -> list[Message]:
+            transcript_slots: list[dict[str, str | None]] = []
+            slot_by_item_id: dict[str, dict[str, str | None]] = {}
+            pending_input_transcriptions: set[str] = set()
+            accepting_audio = True
+            interview_concluding = False
+            pending_end_call_id: str | None = None
+            had_audio_in_response = False
+            awaiting_farewell_response = False
+
+            def build_transcript() -> list[Message]:
+                return [
+                    Message(role=str(slot["role"]), content=str(slot["content"]))
+                    for slot in transcript_slots
+                    if slot["content"]
+                ]
+
+            def candidate_turn_count() -> int:
+                return sum(1 for slot in transcript_slots if slot["role"] == "candidate")
+
+            def record_candidate_transcription(item_id: object, cand_text: str) -> None:
+                if not cand_text:
+                    return
+                if isinstance(item_id, str) and item_id in slot_by_item_id:
+                    slot_by_item_id[item_id]["content"] = cand_text
+                elif isinstance(item_id, str) and item_id:
+                    slot: dict[str, str | None] = {"role": "candidate", "content": cand_text}
+                    slot_by_item_id[item_id] = slot
+                    transcript_slots.append(slot)
+                elif transcript_slots and transcript_slots[-1]["role"] == "candidate":
+                    transcript_slots[-1]["content"] = cand_text
+                else:
+                    transcript_slots.append({"role": "candidate", "content": cand_text})
+
             async with self.client.realtime.connect(model=self.realtime_model) as connection:
                 pcm_format = AudioPCM(type="audio/pcm", rate=24000)
                 session_config = RealtimeSessionCreateRequestParam(
                     type="realtime",
                     instructions=instructions,
                     output_modalities=["audio"],
+                    tools=[end_interview_tool],
+                    tool_choice="auto",
                     audio=RealtimeAudioConfigParam(
                         input=RealtimeAudioConfigInputParam(
                             format=pcm_format,
@@ -145,18 +214,86 @@ class OpenAIProvider(AIProvider):
                     response=RealtimeResponseCreateParamsParam(instructions=kickoff_prompt)
                 )
 
+                conn_iter = connection.__aiter__()
+
+                async def drain_pending_transcriptions(timeout_seconds: float = 2.0) -> None:
+                    if not pending_input_transcriptions:
+                        return
+                    deadline = asyncio.get_running_loop().time() + timeout_seconds
+                    while pending_input_transcriptions:
+                        remaining = deadline - asyncio.get_running_loop().time()
+                        if remaining <= 0:
+                            break
+                        try:
+                            evt = await asyncio.wait_for(anext(conn_iter), timeout=remaining)
+                        except (TimeoutError, StopAsyncIteration):
+                            break
+                        evt_type = getattr(evt, "type", None)
+                        if evt_type == "conversation.item.input_audio_transcription.completed":
+                            evt_item_id = getattr(evt, "item_id", None)
+                            if isinstance(evt_item_id, str):
+                                pending_input_transcriptions.discard(evt_item_id)
+                            transcript_val = getattr(evt, "transcript", None)
+                            cand_text = (transcript_val if isinstance(transcript_val, str) else "").strip()
+                            if (
+                                cand_text
+                                and isinstance(evt_item_id, str)
+                                and evt_item_id in slot_by_item_id
+                            ):
+                                slot_by_item_id[evt_item_id]["content"] = cand_text
+                                await send_realtime_event(
+                                    websocket,
+                                    RealtimeTranscriptChunk(
+                                        role="candidate",
+                                        content=cand_text,
+                                    ),
+                                )
+                        elif evt_type == "conversation.item.input_audio_transcription.failed":
+                            evt_item_id = getattr(evt, "item_id", None)
+                            if isinstance(evt_item_id, str):
+                                pending_input_transcriptions.discard(evt_item_id)
+
                 async def receive_from_openai() -> None:
+                    nonlocal accepting_audio
+                    nonlocal awaiting_farewell_response
+                    nonlocal had_audio_in_response
+                    nonlocal interview_concluding
+                    nonlocal pending_end_call_id
                     try:
-                        async for event in connection:
+                        while True:
+                            try:
+                                event = await anext(conn_iter)
+                            except StopAsyncIteration:
+                                break
                             event_type = getattr(event, "type", None)
 
-                            if event_type == "input_audio_buffer.speech_started":
-                                await send_realtime_event(websocket, RealtimeInterrupted())
-                                current_interviewer_text.clear()
+                            if event_type == "response.created":
+                                had_audio_in_response = False
+
+                            elif event_type == "input_audio_buffer.speech_started":
+                                if not interview_concluding:
+                                    await send_realtime_event(websocket, RealtimeInterrupted())
+                                    current_interviewer_text.clear()
+
+                            elif event_type == "input_audio_buffer.committed":
+                                if not interview_concluding:
+                                    item_id = getattr(event, "item_id", None)
+                                    if isinstance(item_id, str) and item_id:
+                                        pending_input_transcriptions.add(item_id)
+                                        if item_id not in slot_by_item_id:
+                                            slot: dict[str, str | None] = {"role": "candidate", "content": None}
+                                            slot_by_item_id[item_id] = slot
+                                            transcript_slots.append(slot)
+
+                            elif event_type == "conversation.item.input_audio_transcription.failed":
+                                item_id = getattr(event, "item_id", None)
+                                if isinstance(item_id, str):
+                                    pending_input_transcriptions.discard(item_id)
 
                             elif event_type in ("response.output_audio.delta", "response.audio.delta"):
                                 delta = getattr(event, "delta", None)
                                 if isinstance(delta, str) and delta:
+                                    had_audio_in_response = True
                                     pcm_bytes = base64.b64decode(delta)
                                     await websocket.send_bytes(pcm_bytes)
 
@@ -180,6 +317,7 @@ class OpenAIProvider(AIProvider):
                                 "response.output_audio_transcript.done",
                                 "response.audio_transcript.done",
                             ):
+                                had_audio_in_response = True
                                 transcript_val = getattr(event, "transcript", None)
                                 final_text = (
                                     transcript_val
@@ -187,7 +325,7 @@ class OpenAIProvider(AIProvider):
                                     else "".join(current_interviewer_text)
                                 ).strip()
                                 if final_text:
-                                    transcript.append(Message(role="interviewer", content=final_text))
+                                    transcript_slots.append({"role": "interviewer", "content": final_text})
                                     await send_realtime_event(
                                         websocket,
                                         RealtimeTranscriptFinal(
@@ -196,32 +334,101 @@ class OpenAIProvider(AIProvider):
                                         ),
                                     )
                                     current_interviewer_text.clear()
+                                    if not interview_concluding and self.is_closing_interviewer_message(
+                                        final_text, candidate_turn_count(), len(plan.questions)
+                                    ):
+                                        interview_concluding = True
+                                        accepting_audio = False
 
                             elif event_type == "conversation.item.input_audio_transcription.delta":
-                                delta = getattr(event, "delta", None)
-                                if isinstance(delta, str) and delta:
-                                    await send_realtime_event(
-                                        websocket,
-                                        RealtimeTranscriptChunk(
-                                            role="candidate",
-                                            content=delta,
-                                        ),
-                                    )
+                                item_id = getattr(event, "item_id", None)
+                                if not interview_concluding or (
+                                    isinstance(item_id, str) and item_id in slot_by_item_id
+                                ):
+                                    delta = getattr(event, "delta", None)
+                                    if isinstance(delta, str) and delta:
+                                        await send_realtime_event(
+                                            websocket,
+                                            RealtimeTranscriptChunk(
+                                                role="candidate",
+                                                content=delta,
+                                            ),
+                                        )
 
                             elif event_type == "conversation.item.input_audio_transcription.completed":
+                                item_id = getattr(event, "item_id", None)
+                                if isinstance(item_id, str):
+                                    pending_input_transcriptions.discard(item_id)
+                                if interview_concluding and not (
+                                    isinstance(item_id, str) and item_id in slot_by_item_id
+                                ):
+                                    continue
                                 transcript_val = getattr(event, "transcript", None)
                                 cand_text = (transcript_val if isinstance(transcript_val, str) else "").strip()
                                 if cand_text:
-                                    if transcript and transcript[-1].role == "candidate":
-                                        transcript[-1].content = cand_text
-                                    else:
-                                        transcript.append(Message(role="candidate", content=cand_text))
+                                    record_candidate_transcription(item_id, cand_text)
                                     await send_realtime_event(
                                         websocket,
                                         RealtimeTranscriptChunk(
                                             role="candidate",
                                             content=cand_text,
                                         ),
+                                    )
+
+                            elif event_type == "response.function_call_arguments.done":
+                                if getattr(event, "name", None) == "end_interview":
+                                    interview_concluding = True
+                                    accepting_audio = False
+                                    call_id = getattr(event, "call_id", None)
+                                    if isinstance(call_id, str) and call_id:
+                                        pending_end_call_id = call_id
+
+                            elif event_type == "response.done":
+                                resp_obj = getattr(event, "response", None)
+                                output_items = getattr(resp_obj, "output", None)
+                                if isinstance(output_items, (list, tuple)):
+                                    for item in output_items:
+                                        if (
+                                            getattr(item, "type", None) == "function_call"
+                                            and getattr(item, "name", None) == "end_interview"
+                                        ):
+                                            interview_concluding = True
+                                            accepting_audio = False
+                                            if pending_end_call_id is None:
+                                                call_id = getattr(item, "call_id", None)
+                                                if isinstance(call_id, str) and call_id:
+                                                    pending_end_call_id = call_id
+
+                                if awaiting_farewell_response:
+                                    await drain_pending_transcriptions()
+                                    break
+                                if interview_concluding:
+                                    if had_audio_in_response or not pending_end_call_id:
+                                        await drain_pending_transcriptions()
+                                        break
+                                    try:
+                                        await connection.input_audio_buffer.clear()
+                                    except Exception:
+                                        pass
+                                    await connection.conversation.item.create(
+                                        item=RealtimeConversationItemFunctionCallOutputParam(
+                                            type="function_call_output",
+                                            call_id=pending_end_call_id,
+                                            output=json.dumps({"status": "concluded", "debrief_starting": True}),
+                                        )
+                                    )
+                                    awaiting_farewell_response = True
+                                    pending_end_call_id = None
+                                    had_audio_in_response = False
+                                    await connection.response.create(
+                                        response=RealtimeResponseCreateParamsParam(
+                                            instructions=(
+                                                "Give a brief, warm one-sentence closing remark thanking the "
+                                                "candidate and letting them know the interview is complete and "
+                                                "their debrief is starting now. Do not ask any questions."
+                                            ),
+                                            tool_choice="none",
+                                        )
                                     )
 
                             elif event_type == "error":
@@ -243,6 +450,8 @@ class OpenAIProvider(AIProvider):
                         while True:
                             msg = await websocket.receive()
                             if "bytes" in msg and msg["bytes"]:
+                                if not accepting_audio:
+                                    continue
                                 b64_audio = base64.b64encode(msg["bytes"]).decode("ascii")
                                 await connection.input_audio_buffer.append(audio=b64_audio)
                             elif "text" in msg and msg["text"]:
@@ -267,7 +476,7 @@ class OpenAIProvider(AIProvider):
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
 
-            return transcript
+            return build_transcript()
 
         return await _run_live_session(kickoff_prompt=kickoff_message)
 

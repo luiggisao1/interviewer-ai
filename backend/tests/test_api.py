@@ -218,3 +218,96 @@ def test_evaluation_uses_custom_evaluation_provider() -> None:
     })
     assert getattr(req.config, "evaluation_provider", None) == "gemini"
 
+
+def test_is_closing_interviewer_message() -> None:
+    from app.services.base import AIProvider
+
+    assert AIProvider.is_closing_interviewer_message("That concludes our interview.", 1, 3) is True
+    assert AIProvider.is_closing_interviewer_message("Thanks so much, goodbye!", 1, 3) is True
+    assert AIProvider.is_closing_interviewer_message("Your debrief is starting now.", 3, 3) is True
+    assert AIProvider.is_closing_interviewer_message("Thank you for your time today!", 3, 3) is True
+    assert AIProvider.is_closing_interviewer_message("Thank you for your time today!", 1, 3) is False
+    assert AIProvider.is_closing_interviewer_message("Goodbye!", 0, 3) is False
+    assert AIProvider.is_closing_interviewer_message("Goodbye — do you have any questions?", 3, 3) is False
+    assert AIProvider.is_closing_interviewer_message("Good point on caching.", 1, 3) is False
+
+
+def test_turn_marks_complete_on_verbal_closing_and_avoids_double_counting() -> None:
+    plan = {
+        "title": "System Design Practice",
+        "summary": "Distributed systems",
+        "focus_areas": ["Caching", "Sharding"],
+        "questions": ["How do you invalidate cache?", "How do you shard data?"],
+        "estimated_turns": 2,
+    }
+    transcript = [
+        {"role": "interviewer", "content": "How do you invalidate cache?"},
+        {"role": "candidate", "content": "Write-through and TTLs."},
+    ]
+    mock_provider = MagicMock()
+    mock_provider.name = "openai"
+    mock_provider.next_turn = AsyncMock(
+        return_value=("Thanks! That concludes our interview. Goodbye.", False)
+    )
+
+    with patch("app.routers.api.create_provider", return_value=mock_provider):
+        response = client.post(
+            "/api/turn",
+            json={
+                "plan": plan,
+                "config": CONFIG,
+                "transcript": transcript,
+                "candidate_answer": "Write-through and TTLs.",
+            },
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["is_complete"] is True
+    assert body["turn_number"] == 1
+
+
+def test_realtime_ws_emits_session_completed() -> None:
+    import json
+
+    from app.schemas import Message
+
+    plan = {
+        "title": "Python Practice",
+        "summary": "Async",
+        "focus_areas": ["AsyncIO"],
+        "questions": ["Explain the event loop."],
+        "estimated_turns": 1,
+    }
+    expected_transcript = [
+        Message(role="interviewer", content="Explain the event loop."),
+        Message(role="candidate", content="It runs cooperative coroutines."),
+        Message(role="interviewer", content="Thank you, the interview is concluded."),
+    ]
+    mock_provider = MagicMock()
+    mock_provider.name = "openai"
+    mock_provider.supports_realtime_audio = True
+    mock_provider.handle_realtime_audio_session = AsyncMock(return_value=expected_transcript)
+    setup_payload = json.dumps(
+        {
+            "type": "setup",
+            "provider": "openai",
+            "study_guide": GUIDE,
+            "config": CONFIG,
+            "plan": plan,
+        }
+    )
+
+    with patch("app.routers.realtime.create_provider", return_value=mock_provider):
+        with client.websocket_connect("/api/realtime/ws") as ws:
+            ws.send_text(setup_payload)
+            event = ws.receive_json()
+
+    assert event == {
+        "type": "session_completed",
+        "transcript": [
+            {"role": "interviewer", "content": "Explain the event loop."},
+            {"role": "candidate", "content": "It runs cooperative coroutines."},
+            {"role": "interviewer", "content": "Thank you, the interview is concluded."},
+        ],
+    }
+
