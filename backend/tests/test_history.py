@@ -88,7 +88,7 @@ def test_evaluate_stores_full_responses_when_storage_mode_all(
     detail_res = client.get(f"/api/history/sessions/{session_id}")
     assert detail_res.status_code == 200
     detail = detail_res.json()
-    assert detail["candidate_name"] == "Alice Rivera"
+    assert detail["candidate_name"] == "Anonymous"
     assert detail["storage_mode"] == "all"
     assert detail["study_guide_section"] == "Python"
     assert detail["overall_score"] == body["evaluation"]["overall_score"]
@@ -130,7 +130,7 @@ def test_evaluate_omits_candidate_answers_when_storage_mode_senior_only(
     detail_res = client.get(f"/api/history/sessions/{session_id}")
     assert detail_res.status_code == 200
     detail = detail_res.json()
-    assert detail["candidate_name"] == "Bob Chen"
+    assert detail["candidate_name"] == "Anonymous"
     assert detail["storage_mode"] == "senior_only"
     assert detail["overall_score"] is None
     assert detail["summary"] == ""
@@ -206,15 +206,13 @@ def test_questions_endpoint_groups_answers_from_multiple_candidates(
     assert groups[0]["question"] == shared_question
     assert groups[0]["answer_count"] == 2
     entries = groups[0]["entries"]
-    by_name = {entry["candidate_name"]: entry for entry in entries}
-    assert set(by_name.keys()) == {"Alice", "Bob"}
-    assert by_name["Alice"]["candidate_answer"] == "Indexes speed up reads using B-trees."
-    assert (
-        by_name["Bob"]["candidate_answer"]
-        == "Indexes help SELECT queries but add write amplification on INSERT/UPDATE."
-    )
-    assert by_name["Alice"]["senior_answer"]
-    assert by_name["Bob"]["senior_answer"]
+    assert all(entry["candidate_name"] == "Anonymous" for entry in entries)
+    answers = {entry["candidate_answer"] for entry in entries}
+    assert answers == {
+        "Indexes speed up reads using B-trees.",
+        "Indexes help SELECT queries but add write amplification on INSERT/UPDATE.",
+    }
+    assert all(entry["senior_answer"] for entry in entries)
 
 
 def test_history_filtering_across_endpoints(
@@ -294,33 +292,33 @@ def test_history_filtering_across_endpoints(
 
     filters_res = client.get("/api/history/filters")
     assert filters_res.status_code == 200
-    assert filters_res.json() == {"candidates": ["Alice", "Bob"], "sections": ["Python", "SQL"]}
+    assert filters_res.json() == {"candidates": [], "sections": ["Python", "SQL"]}
 
-    # Filter by candidate_name
-    bob_sessions = client.get("/api/history/sessions", params={"candidate_name": "bob"}).json()
-    assert len(bob_sessions) == 1
-    assert bob_sessions[0]["candidate_name"] == "Bob"
-    assert bob_sessions[0]["overall_score"] is None
+    # Filter by section (sessions)
+    sql_sessions = client.get("/api/history/sessions", params={"section": "sql"}).json()
+    assert len(sql_sessions) == 1
+    assert sql_sessions[0]["candidate_name"] == "Anonymous"
+    assert sql_sessions[0]["overall_score"] is None
 
-    # Filter by section
+    # Filter by section (questions)
     py_questions = client.get("/api/history/questions", params={"section": "Python"}).json()
     assert len(py_questions) == 2
 
     # Filter by storage_mode
     senior_only_responses = client.get("/api/history/responses", params={"storage_mode": "senior_only"}).json()
     assert len(senior_only_responses) == 1
-    assert senior_only_responses[0]["candidate_name"] == "Bob"
+    assert senior_only_responses[0]["candidate_name"] == "Anonymous"
     assert senior_only_responses[0]["candidate_answer"] is None
 
     # Search inside session with multiple questions keeps accurate total response_count
     search_sessions = client.get("/api/history/sessions", params={"search": "tracemalloc"}).json()
     assert len(search_sessions) == 1
-    assert search_sessions[0]["candidate_name"] == "Alice"
+    assert search_sessions[0]["candidate_name"] == "Anonymous"
     assert search_sessions[0]["response_count"] == 2
 
     search_responses = client.get("/api/history/responses", params={"search": "DENSE_RANK"}).json()
     assert len(search_responses) == 1
-    assert search_responses[0]["candidate_name"] == "Bob"
+    assert search_responses[0]["candidate_name"] == "Anonymous"
 
 
 def test_history_is_read_only_no_public_delete(
@@ -473,7 +471,8 @@ def test_export_markdown_single_session_and_404(
     export_res = client.get("/api/history/export", params={"session_id": session_id})
     assert export_res.status_code == 200
     assert f'filename="interview-session-{session_id[:8]}.md"' in export_res.headers["content-disposition"]
-    assert "# Interview Session: Carla" in export_res.text
+    assert "# Interview Session: SQL" in export_res.text
+    assert "Carla" not in export_res.text
     assert "SQL Deep Dive" in export_res.text
     assert "Balanced tree nodes sorted by key." in export_res.text
     assert "Gold Standard: Complete explanation." in export_res.text
@@ -585,7 +584,7 @@ def test_sqlmodel_orm_persistence_and_cascade(tmp_path: Path) -> None:
 
     with Session(repo.engine) as db:
         orm_session = db.exec(select(InterviewSession).where(InterviewSession.id == session_id)).one()
-        assert orm_session.candidate_name == "ORM Tester"
+        assert orm_session.candidate_name == "Anonymous"
         assert len(orm_session.responses) == 1
         assert orm_session.responses[0].question == "How does SQLModel combine SQLAlchemy and Pydantic?"
 
@@ -594,3 +593,220 @@ def test_sqlmodel_orm_persistence_and_cascade(tmp_path: Path) -> None:
     with Session(repo.engine) as db:
         assert db.exec(select(InterviewSession)).all() == []
         assert db.exec(select(InterviewResponse)).all() == []
+
+
+def test_legacy_candidate_names_are_anonymized_on_read_and_export(
+    history_client: tuple[TestClient, InterviewRepository],
+) -> None:
+    client, repo = history_client
+    legacy_id = "legacy-session-1"
+    with Session(repo.engine) as db:
+        db.add(
+            InterviewSession(
+                id=legacy_id,
+                candidate_name="Legacy Secret Name",
+                storage_mode="all",
+                role="Backend Engineer",
+                difficulty="Senior",
+                mode="Technical",
+                study_guide_section="Python",
+                plan_title="Python Concurrency",
+                provider="mock",
+                overall_score=82,
+                summary="Solid concurrency concepts.",
+                responses=[
+                    InterviewResponse(
+                        question_order=1,
+                        question="How does asyncio work?",
+                        candidate_answer="Single-threaded event loop.",
+                        senior_answer="Cooperative multitasking over non-blocking I/O.",
+                        why_stronger="Explains I/O multiplexing.",
+                    )
+                ],
+            )
+        )
+        db.commit()
+
+    sessions = client.get("/api/history/sessions").json()
+    assert len(sessions) == 1
+    assert sessions[0]["candidate_name"] == "Anonymous"
+
+    # Searching by legacy personal name must not leak legacy rows
+    assert client.get("/api/history/sessions", params={"search": "Legacy Secret Name"}).json() == []
+    assert client.get("/api/history/responses", params={"search": "Legacy Secret Name"}).json() == []
+    assert client.get("/api/history/filters").json()["candidates"] == []
+
+    detail = client.get(f"/api/history/sessions/{legacy_id}").json()
+    assert detail["candidate_name"] == "Anonymous"
+
+    export_res = client.get("/api/history/export", params={"session_id": legacy_id})
+    assert export_res.status_code == 200
+    assert "Legacy Secret Name" not in export_res.text
+    assert "# Interview Session: Python" in export_res.text
+
+
+def test_evaluation_prompt_strips_names_and_greetings() -> None:
+    from app.schemas import EvaluationRequest, Message
+    from app.services.mock_provider import MockProvider
+    from app.services.prompts import build_evaluation_prompt
+
+    prompt = build_evaluation_prompt(count=1)
+    assert "strip all greetings" in prompt
+    assert "Never include any candidate name" in prompt
+
+    provider = MockProvider()
+    ctx = provider.prepare_evaluation_prompt(
+        EvaluationRequest(
+            study_guide=GUIDE,
+            config=InterviewConfig(
+                role=Role.backend_engineer,
+                mode=InterviewMode.technical,
+                difficulty=Difficulty.senior,
+                duration_minutes=15,
+                candidate_name="Luiggi",
+                storage_mode=StorageMode.all,
+                study_guide_section="Python",
+            ),
+            plan=InterviewPlan(**PLAN),
+            transcript=[
+                Message(role="interviewer", content="Hello Luiggi, how does the GIL work?"),
+                Message(role="candidate", content="It serializes bytecode execution."),
+            ],
+        )
+    )
+    assert ctx.payload["config"]["candidate_name"] == ""
+
+
+def test_top_three_scored_sessions_retained_per_topic_and_senior_only_preserved(
+    history_client: tuple[TestClient, InterviewRepository],
+) -> None:
+    _, repo = history_client
+
+    def _save(topic: str, score: int, storage_mode: StorageMode = StorageMode.all) -> str | None:
+        return repo.save_evaluation(
+            config=InterviewConfig(
+                role=Role.backend_engineer,
+                mode=InterviewMode.technical,
+                difficulty=Difficulty.senior,
+                duration_minutes=15,
+                candidate_name="Tester",
+                storage_mode=storage_mode,
+                study_guide_section=topic,
+            ),
+            plan=InterviewPlan(
+                title=f"{topic} Practice",
+                summary="Summary",
+                focus_areas=[topic],
+                questions=[f"Question for {topic} ({score})"],
+                estimated_turns=1,
+            ),
+            evaluation=Evaluation(
+                overall_score=score,
+                summary=f"Score {score}",
+                senior_answers=[
+                    SeniorAnswer(
+                        question=f"Question for {topic} ({score})",
+                        candidate_answer="Answer",
+                        senior_answer="Senior Answer",
+                        why_stronger="Depth",
+                    )
+                ],
+            ),
+            provider="mock",
+            study_guide=f"Notes for {topic}",
+        )
+
+    for score in (70, 92, 85, 88):
+        _save("Python", score)
+
+    python_sessions = repo.list_sessions(section="Python")
+    assert sorted(s.overall_score for s in python_sessions if s.overall_score is not None) == [85, 88, 92]
+
+    # A 5th lower-scored session does not displace Top 3 and returns None
+    assert _save("Python", 60) is None
+    python_sessions = repo.list_sessions(section="Python")
+    assert sorted(s.overall_score for s in python_sessions if s.overall_score is not None) == [85, 88, 92]
+
+    # Senior-only sessions are preserved separately from the Top-3 scored cap
+    senior_only_id = _save("Python", 50, storage_mode=StorageMode.senior_only)
+    assert senior_only_id is not None
+    assert len(repo.list_sessions(section="Python")) == 4
+
+    # Other topics maintain their own Top-3 pool
+    sql_id = _save("SQL", 75)
+    assert sql_id is not None
+    assert len(repo.list_sessions(section="SQL")) == 1
+
+
+def test_study_guide_content_saved_and_migrated_on_legacy_db(tmp_path: Path) -> None:
+    import sqlite3
+
+    legacy_db = tmp_path / "legacy_schema.db"
+    conn = sqlite3.connect(legacy_db)
+    conn.execute(
+        """
+        CREATE TABLE interview_sessions (
+            id VARCHAR PRIMARY KEY,
+            candidate_name VARCHAR(100) NOT NULL,
+            storage_mode VARCHAR(20) NOT NULL,
+            role VARCHAR(100) NOT NULL,
+            difficulty VARCHAR(50) NOT NULL,
+            mode VARCHAR(50) NOT NULL,
+            study_guide_section VARCHAR(100) NOT NULL DEFAULT '',
+            plan_title VARCHAR(300) NOT NULL DEFAULT '',
+            provider VARCHAR(50) NOT NULL DEFAULT '',
+            overall_score INTEGER,
+            summary VARCHAR NOT NULL DEFAULT '',
+            created_at VARCHAR NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE interview_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id VARCHAR NOT NULL,
+            question_order INTEGER NOT NULL,
+            question VARCHAR NOT NULL,
+            candidate_answer VARCHAR,
+            senior_answer VARCHAR NOT NULL DEFAULT '',
+            why_stronger VARCHAR NOT NULL DEFAULT '',
+            created_at VARCHAR NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    repo = InterviewRepository(legacy_db)
+    custom_notes = "Custom Python asyncio event loop notes."
+    saved_id = repo.save_evaluation(
+        config=InterviewConfig(
+            role=Role.backend_engineer,
+            mode=InterviewMode.technical,
+            difficulty=Difficulty.senior,
+            duration_minutes=15,
+            candidate_name="Tester",
+            storage_mode=StorageMode.all,
+            study_guide_section="Python (Custom)",
+        ),
+        plan=InterviewPlan(**PLAN),
+        evaluation=Evaluation(
+            overall_score=90,
+            summary="Great.",
+            senior_answers=[
+                SeniorAnswer(
+                    question="How does the Python GIL affect CPU-bound threads?",
+                    candidate_answer="GIL serializes bytecode.",
+                    senior_answer="Use multiprocessing for CPU-bound parallelism.",
+                    why_stronger="Explains process isolation.",
+                )
+            ],
+        ),
+        provider="mock",
+        study_guide=custom_notes,
+    )
+    assert saved_id is not None
+    detail = repo.get_session(saved_id)
+    assert detail is not None
+    assert detail.study_guide_content == custom_notes

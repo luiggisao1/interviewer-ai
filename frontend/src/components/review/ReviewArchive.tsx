@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   BookOpen,
-  Calendar,
   CheckCircle2,
   Database,
   Download,
   Eye,
   EyeOff,
+  FileText,
   Layers,
   Lock,
   MessageSquare,
@@ -16,19 +16,17 @@ import {
   Search,
   Shield,
   Sparkles,
-  User,
-  Users,
+  X,
 } from "lucide-react";
 import { api } from "../../api";
 import type {
   HistoryFilters,
   HistoryQueryParams,
-  QuestionGroup,
   StorageMode,
   StoredSessionDetail,
   StoredSessionSummary,
+  StudyGuideSection,
 } from "../../types";
-import { SegmentedControl } from "../ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -41,14 +39,13 @@ interface ReviewArchiveProps {
   onStartNew: () => void;
 }
 
-type ArchiveView = "questions" | "sessions";
+interface TopicSessionGroup {
+  key: string;
+  displayName: string;
+  sessions: StoredSessionSummary[];
+}
 
 const ALL_SENTINEL = "__all__";
-
-const VIEW_OPTIONS: { value: ArchiveView; label: string }[] = [
-  { value: "questions", label: "Compare by Question" },
-  { value: "sessions", label: "Browse by Person / Session" },
-];
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -60,6 +57,44 @@ function formatDate(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function slugify(text: string): string {
+  const cleaned = text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || "item";
+}
+
+function formatDateForFilename(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "session";
+  return date.toISOString().slice(0, 10);
+}
+
+function groupSessionsByTopic(sessions: StoredSessionSummary[]): TopicSessionGroup[] {
+  const groups = new Map<string, TopicSessionGroup>();
+  for (const session of sessions) {
+    const displayName = session.study_guide_section.trim() || session.role.trim() || "General";
+    const key = displayName.toLowerCase();
+    const existing = groups.get(key);
+    if (existing) {
+      existing.sessions.push(session);
+    } else {
+      groups.set(key, { key, displayName, sessions: [session] });
+    }
+  }
+  for (const group of groups.values()) {
+    group.sessions.sort((a, b) => {
+      const scoreA = a.overall_score ?? -1;
+      const scoreB = b.overall_score ?? -1;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }
+  return Array.from(groups.values());
 }
 
 function getScoreBadgeClass(score: number): string {
@@ -82,7 +117,6 @@ function downloadMarkdown(content: string, filename: string): void {
 }
 
 interface AnswerComparisonGridProps {
-  candidateName: string;
   storageMode: StorageMode;
   candidateAnswer: string | null;
   seniorAnswer: string;
@@ -92,7 +126,6 @@ interface AnswerComparisonGridProps {
 }
 
 const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
-  candidateName,
   storageMode,
   candidateAnswer,
   seniorAnswer,
@@ -116,7 +149,7 @@ const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
       {showCandidateAnswers && (
         <div className="bg-muted/70 p-4 rounded-lg border border-border flex flex-col gap-1.5">
           <span className="text-[11px] font-mono font-bold text-ink-muted uppercase tracking-wider">
-            {candidateName}&rsquo;s Answer
+            Candidate Answer
           </span>
           {candidateAnswer !== null ? (
             <p className="text-[14px] text-ink leading-relaxed font-sans whitespace-pre-wrap">
@@ -170,26 +203,41 @@ const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
 };
 
 export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
-  const [view, setView] = useState<ArchiveView>("questions");
   const [showCandidateAnswers, setShowCandidateAnswers] = useState(true);
   const [showSeniorAnswers, setShowSeniorAnswers] = useState(true);
 
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedCandidate, setSelectedCandidate] = useState<string>(ALL_SENTINEL);
   const [selectedSection, setSelectedSection] = useState<string>(ALL_SENTINEL);
   const [selectedStorageMode, setSelectedStorageMode] = useState<string>(ALL_SENTINEL);
 
   const [filters, setFilters] = useState<HistoryFilters>({ candidates: [], sections: [] });
-  const [questionGroups, setQuestionGroups] = useState<QuestionGroup[]>([]);
+  const [guideSections, setGuideSections] = useState<StudyGuideSection[]>([]);
   const [sessions, setSessions] = useState<StoredSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedSessionDetail, setSelectedSessionDetail] = useState<StoredSessionDetail | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    void api
+      .studyGuideSections()
+      .then((sections) => setGuideSections(sections))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -200,13 +248,12 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
 
   const activeQuery = useCallback((): HistoryQueryParams => {
     return {
-      candidate_name: selectedCandidate === ALL_SENTINEL ? undefined : selectedCandidate,
       section: selectedSection === ALL_SENTINEL ? undefined : selectedSection,
       storage_mode:
         selectedStorageMode === ALL_SENTINEL ? undefined : (selectedStorageMode as StorageMode),
       search: debouncedSearch || undefined,
     };
-  }, [selectedCandidate, selectedSection, selectedStorageMode, debouncedSearch]);
+  }, [selectedSection, selectedStorageMode, debouncedSearch]);
 
   const loadArchive = useCallback(async () => {
     setLoading(true);
@@ -214,13 +261,11 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
     const query = activeQuery();
 
     try {
-      const [filterData, groupsData, sessionsData] = await Promise.all([
+      const [filterData, sessionsData] = await Promise.all([
         api.historyFilters(),
-        api.listQuestions(query),
         api.listSessions(query),
       ]);
       setFilters(filterData);
-      setQuestionGroups(groupsData);
       setSessions(sessionsData);
 
       setSelectedSessionId((currentId) => {
@@ -271,18 +316,66 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
     };
   }, [selectedSessionId]);
 
-  async function handleExportMarkdown(sessionId?: string) {
+  const topicGroups = useMemo(() => groupSessionsByTopic(sessions), [sessions]);
+
+  const activeStudyGuideText = useMemo(() => {
+    if (!selectedSessionDetail) return "";
+    const savedText = selectedSessionDetail.study_guide_content?.trim();
+    if (savedText) return savedText;
+    const topicKey = selectedSessionDetail.study_guide_section.trim().toLowerCase();
+    if (!topicKey) return "";
+    return (
+      guideSections.find((s) => s.title.trim().toLowerCase() === topicKey)?.content.trim() || ""
+    );
+  }, [selectedSessionDetail, guideSections]);
+
+  const previewBlocks = useMemo(() => {
+    if (!activeStudyGuideText) return [];
+    return activeStudyGuideText
+      .replace(/\f/g, "\n\n")
+      .replace(/^Generated on\b.*$/gim, "")
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+  }, [activeStudyGuideText]);
+
+  function buildSessionFilename(sessionId: string): string {
+    const summary =
+      selectedSessionDetail?.id === sessionId
+        ? selectedSessionDetail
+        : sessions.find((s) => s.id === sessionId);
+    if (!summary) {
+      return `interview-session-${sessionId.slice(0, 8)}.md`;
+    }
+    const topicSlug = slugify(summary.study_guide_section || summary.role);
+    const difficultySlug = slugify(summary.difficulty);
+    const datePart = formatDateForFilename(summary.created_at);
+    return `${topicSlug}-${difficultySlug}-${datePart}.md`;
+  }
+
+  async function handleExportMarkdown(options?: { sessionId?: string; section?: string }) {
     setExporting(true);
     setError("");
+    const sessionId = options?.sessionId;
+    const section = options?.section;
+
     try {
       const markdown = await api.exportMarkdown({
-        ...(sessionId ? { session_id: sessionId } : { ...activeQuery(), view }),
+        ...(sessionId
+          ? { session_id: sessionId }
+          : section
+            ? { ...activeQuery(), section, view: "sessions" }
+            : { ...activeQuery(), view: "sessions" }),
         include_candidate_answers: showCandidateAnswers,
         include_senior_answers: showSeniorAnswers,
       });
+
       const filename = sessionId
-        ? `interview-session-${sessionId.slice(0, 8)}.md`
-        : `interview-archive-${view}.md`;
+        ? buildSessionFilename(sessionId)
+        : section
+          ? `${slugify(section)}-sessions.md`
+          : "interview-archive-sessions.md";
+
       downloadMarkdown(markdown, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export Markdown.");
@@ -291,9 +384,12 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
     }
   }
 
-  const totalPeople = filters.candidates.length;
   const totalSessions = sessions.length;
-  const totalQuestions = questionGroups.length;
+  const totalTopics = topicGroups.length;
+  const activePreviewTitle =
+    selectedSessionDetail?.study_guide_section ||
+    selectedSessionDetail?.plan_title ||
+    "Study Guide";
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden w-full max-w-[1320px] mx-auto py-1">
@@ -313,72 +409,56 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                   <span className="bg-surface border border-border-strong text-ink px-2 py-0.5 rounded-full">
                     {totalSessions} {totalSessions === 1 ? "Session" : "Sessions"}
                   </span>
-                  <span className="bg-emerald-50 border border-emerald-200 text-verified-deep px-2 py-0.5 rounded-full">
-                    {totalQuestions} {totalQuestions === 1 ? "Question" : "Questions"}
-                  </span>
                   <span className="bg-amber-50 border border-amber-200 text-accent-deep px-2 py-0.5 rounded-full">
-                    {totalPeople} {totalPeople === 1 ? "Person" : "People"}
+                    {totalTopics} {totalTopics === 1 ? "Topic" : "Topics"}
                   </span>
                   <span className="inline-flex items-center gap-1 bg-muted border border-border text-ink-muted px-2 py-0.5 rounded-full">
                     <Lock className="w-2.5 h-2.5 text-ink-muted" aria-hidden="true" />
-                    <span>Read-Only</span>
+                    <span>Anonymous · Read-Only</span>
                   </span>
                 </div>
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
-                Compare how different candidates answered each question alongside the LLM-suggested senior benchmark answers
+                Top 3 highest-scored sessions per topic (plus Senior Only benchmarks), grouped anonymously by study topic.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <SegmentedControl<ArchiveView>
-              options={VIEW_OPTIONS}
-              value={view}
-              onChange={setView}
-              size="sm"
-              className="w-full sm:w-auto"
-            />
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={exporting || (view === "questions" ? questionGroups.length === 0 : sessions.length === 0)}
-              onClick={() => void handleExportMarkdown()}
-              title="Download filtered archive as Markdown (.md)"
+              disabled={exporting || !selectedSessionId}
+              onClick={() => selectedSessionId && void handleExportMarkdown({ sessionId: selectedSessionId })}
+              title="Download only the currently selected session as Markdown (.md)"
               className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-verified-deep border border-emerald-200 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>{exporting ? "Exporting…" : "Export .md"}</span>
+              <span>{exporting ? "Exporting…" : "Export Selected .md"}</span>
+            </button>
+            <button
+              type="button"
+              disabled={exporting || sessions.length === 0}
+              onClick={() => void handleExportMarkdown()}
+              title="Download all filtered sessions combined as Markdown (.md)"
+              className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-xs font-semibold bg-muted/70 hover:bg-surface text-ink border border-border-strong transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <Download className="w-3.5 h-3.5 text-ink-muted" aria-hidden="true" />
+              <span>Export All .md</span>
             </button>
           </div>
         </div>
 
         {/* Filter Bar & Display Toggles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center pt-3 border-t border-border">
-          <div className="lg:col-span-4 relative">
+          <div className="lg:col-span-6 relative">
             <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search questions, answers, names, topics..."
+              placeholder="Search questions, answers, topics..."
               className="bg-muted/60 border border-border-strong rounded-lg pl-9 pr-3.5 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent transition-colors w-full"
             />
-          </div>
-
-          <div className="lg:col-span-2">
-            <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger aria-label="Filter by person">
-                <SelectValue placeholder="All People" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_SENTINEL}>All People</SelectItem>
-                {filters.candidates.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="lg:col-span-2">
@@ -459,12 +539,12 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
       )}
 
       {/* Main Content Area */}
-      {loading && questionGroups.length === 0 && sessions.length === 0 ? (
+      {loading && sessions.length === 0 ? (
         <div className="flex-1 min-h-0 bg-card border border-border rounded-xl flex flex-col items-center justify-center gap-3 text-ink-muted text-sm">
           <RefreshCw className="w-6 h-6 animate-spin text-accent-deep" aria-hidden="true" />
           <span>Loading saved interview responses…</span>
         </div>
-      ) : (view === "questions" ? questionGroups.length === 0 : sessions.length === 0) ? (
+      ) : sessions.length === 0 ? (
         <div className="flex-1 min-h-0 bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-surface border border-border-strong flex items-center justify-center text-accent-deep">
             <MessageSquare className="w-6 h-6" aria-hidden="true" />
@@ -482,163 +562,92 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
             <span>Start New Interview</span>
           </button>
         </div>
-      ) : view === "questions" ? (
-        /* VIEW 1: Compare by Question */
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col gap-4">
-          {questionGroups.map((group, groupIdx) => (
-            <section
-              key={`${group.question}-${groupIdx}`}
-              className="bg-card border border-border hover:border-border-strong rounded-xl p-5 shadow-editorial flex flex-col gap-4 transition-colors"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pb-3 border-b border-border">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-xs font-mono font-bold bg-accent/10 border border-accent/25 text-accent-deep px-2.5 py-1 rounded shrink-0 mt-0.5">
-                    Q{groupIdx + 1}
-                  </span>
-                  <h2 className="font-serif text-[17px] font-semibold text-ink leading-snug">{group.question}</h2>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                  {group.study_guide_section && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-surface border border-border-strong text-ink-secondary px-2.5 py-1 rounded-full">
-                      <BookOpen className="w-3 h-3 text-accent-deep" aria-hidden="true" />
-                      <span>{group.study_guide_section}</span>
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold bg-muted border border-border text-ink px-2.5 py-1 rounded-full">
-                    <Users className="w-3 h-3 text-ink-muted" aria-hidden="true" />
-                    <span>
-                      {group.answer_count} {group.answer_count === 1 ? "response" : "responses"}
-                    </span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3.5">
-                {group.entries.map((entry) => (
-                  <article
-                    key={entry.response_id}
-                    className="bg-surface/40 border border-border rounded-xl p-4 flex flex-col gap-3"
-                  >
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink bg-card border border-border px-2.5 py-1 rounded-lg">
-                          <User className="w-3.5 h-3.5 text-accent-deep" aria-hidden="true" />
-                          <span>{entry.candidate_name}</span>
-                        </span>
-                        <span className="text-xs text-ink-muted">
-                          {entry.difficulty} · {entry.role}
-                        </span>
-                        <span
-                          className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                            entry.storage_mode === "senior_only"
-                              ? "bg-amber-50 border-amber-200 text-accent-deep"
-                              : "bg-emerald-50 border-emerald-200 text-verified-deep"
-                          }`}
-                        >
-                          {entry.storage_mode === "senior_only" ? "Senior Only" : "Full"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 text-xs">
-                        {entry.overall_score !== null && (
-                          <span
-                            className={`inline-flex items-center gap-1 font-mono font-bold px-2.5 py-0.5 rounded-full border ${getScoreBadgeClass(
-                              entry.overall_score
-                            )}`}
-                          >
-                            <Award className="w-3 h-3" aria-hidden="true" />
-                            <span>{entry.overall_score}/100</span>
-                          </span>
-                        )}
-                        <span className="text-ink-muted inline-flex items-center gap-1">
-                          <Calendar className="w-3 h-3" aria-hidden="true" />
-                          <span>{formatDate(entry.created_at)}</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    <AnswerComparisonGrid
-                      candidateName={entry.candidate_name}
-                      storageMode={entry.storage_mode}
-                      candidateAnswer={entry.candidate_answer}
-                      seniorAnswer={entry.senior_answer}
-                      whyStronger={entry.why_stronger}
-                      showCandidateAnswers={showCandidateAnswers}
-                      showSeniorAnswers={showSeniorAnswers}
-                    />
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
       ) : (
-        /* VIEW 2: Browse by Person / Session */
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-hidden">
-          {/* Left Column (4 cols): Session List */}
-          <div className="lg:col-span-4 bg-card border border-border rounded-xl p-4 flex flex-col gap-2.5 min-h-0 overflow-y-auto shadow-editorial">
-            {sessions.map((session) => {
-              const isSelected = session.id === selectedSessionId;
-              return (
-                <div
-                  key={session.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedSessionId(session.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setSelectedSessionId(session.id);
-                    }
-                  }}
-                  className={`rounded-xl p-3.5 border transition-colors cursor-pointer flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                    isSelected
-                      ? "bg-surface border-accent/60 shadow-sm"
-                      : "bg-muted/40 border-border hover:border-border-strong"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <User className="w-4 h-4 text-accent-deep shrink-0" aria-hidden="true" />
-                      <span className="font-bold text-sm text-ink truncate">
-                        {session.candidate_name}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {session.overall_score !== null ? (
-                        <span
-                          className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${getScoreBadgeClass(
-                            session.overall_score
-                          )}`}
-                        >
-                          {session.overall_score}/100
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-accent-deep">
-                          Senior Only
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-ink-secondary font-medium line-clamp-1">
-                    {session.plan_title || `${session.difficulty} ${session.role}`}
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-ink-muted flex-wrap">
-                    <span className="inline-flex items-center gap-1">
-                      <Layers className="w-3 h-3 text-accent-deep" aria-hidden="true" />
-                      <span>
-                        {session.study_guide_section || session.role} · {session.response_count} Q
-                      </span>
+          {/* Left Column (4 cols): Sessions grouped by Topic */}
+          <div className="lg:col-span-4 bg-card border border-border rounded-xl p-4 flex flex-col gap-4 min-h-0 overflow-y-auto shadow-editorial">
+            {topicGroups.map((group) => (
+              <div key={group.key} className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-border">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <BookOpen className="w-4 h-4 text-accent-deep shrink-0" aria-hidden="true" />
+                    <span className="font-serif text-base font-semibold text-ink truncate">
+                      {group.displayName}
                     </span>
-                    <span>{formatDate(session.created_at)}</span>
+                    <span className="text-[11px] font-mono bg-muted border border-border text-ink-muted px-2 py-0.5 rounded-full shrink-0">
+                      {group.sessions.length} {group.sessions.length === 1 ? "session" : "sessions"}
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    disabled={exporting}
+                    onClick={() => void handleExportMarkdown({ section: group.displayName })}
+                    title={`Export all ${group.displayName} sessions (.md)`}
+                    aria-label={`Export all ${group.displayName} sessions`}
+                    className="p-1.5 rounded-md text-ink-muted hover:text-verified-deep hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors cursor-pointer disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                  </button>
                 </div>
-              );
-            })}
+
+                <div className="flex flex-col gap-2">
+                  {group.sessions.map((session) => {
+                    const isSelected = session.id === selectedSessionId;
+                    return (
+                      <div
+                        key={session.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedSessionId(session.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedSessionId(session.id);
+                          }
+                        }}
+                        className={`rounded-xl p-3 border transition-colors cursor-pointer flex flex-col gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          isSelected
+                            ? "bg-surface border-accent/60 shadow-sm"
+                            : "bg-muted/40 border-border hover:border-border-strong"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-semibold text-ink line-clamp-1">
+                            {session.plan_title || `${session.difficulty} ${session.role}`}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {session.overall_score !== null ? (
+                              <span
+                                className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${getScoreBadgeClass(
+                                  session.overall_score
+                                )}`}
+                              >
+                                {session.overall_score}/100
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-accent-deep">
+                                Senior Only
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 text-[11px] text-ink-muted flex-wrap">
+                          <span className="inline-flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-accent-deep" aria-hidden="true" />
+                            <span>
+                              {session.difficulty} · {session.role} · {session.response_count} Q
+                            </span>
+                          </span>
+                          <span>{formatDate(session.created_at)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Right Column (8 cols): Session Detail */}
@@ -658,19 +667,17 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="font-serif text-lg font-semibold text-ink">
-                        {selectedSessionDetail.candidate_name}
+                        {selectedSessionDetail.study_guide_section ||
+                          selectedSessionDetail.plan_title ||
+                          selectedSessionDetail.role}
                       </h2>
                       <span className="text-xs text-ink-muted">
                         · {selectedSessionDetail.difficulty} {selectedSessionDetail.role} ({selectedSessionDetail.mode})
                       </span>
-                      {selectedSessionDetail.study_guide_section && (
-                        <span className="text-[11px] bg-surface border border-border-strong text-accent-deep font-medium px-2 py-0.5 rounded-full">
-                          {selectedSessionDetail.study_guide_section}
-                        </span>
-                      )}
                     </div>
                     <p className="text-xs text-ink-muted mt-1">
-                      {selectedSessionDetail.plan_title} · Engine:{" "}
+                      {selectedSessionDetail.plan_title ? `${selectedSessionDetail.plan_title} · ` : ""}
+                      Engine:{" "}
                       <span className="uppercase font-mono text-ink">
                         {selectedSessionDetail.provider}
                       </span>{" "}
@@ -695,15 +702,27 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                       </span>
                     )}
 
+                    {activeStudyGuideText && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewOpen(true)}
+                        title="Preview the study guide or custom notes used for this session"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-surface hover:bg-muted text-accent-deep border border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        <FileText className="w-3.5 h-3.5" aria-hidden="true" />
+                        <span>Preview Study Guide</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       disabled={exporting}
-                      onClick={() => void handleExportMarkdown(selectedSessionDetail.id)}
+                      onClick={() => void handleExportMarkdown({ sessionId: selectedSessionDetail.id })}
                       title="Download this session as Markdown (.md)"
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-verified-deep border border-emerald-200 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
                       <Download className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>Export Session .md</span>
+                      <span>Export This Session .md</span>
                     </button>
                   </div>
                 </div>
@@ -738,7 +757,6 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                         </div>
 
                         <AnswerComparisonGrid
-                          candidateName={selectedSessionDetail.candidate_name}
                           storageMode={selectedSessionDetail.storage_mode}
                           candidateAnswer={item.candidate_answer}
                           seniorAnswer={item.senior_answer}
@@ -753,6 +771,62 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Study Guide Preview Reading Drawer */}
+      {previewOpen && activeStudyGuideText && (
+        <div
+          className="fixed inset-0 bg-ink/35 backdrop-blur-sm z-[1000] flex justify-end"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Study Guide Preview: ${activePreviewTitle}`}
+            className="w-full max-w-xl h-full bg-paper border-l border-border-strong p-6 flex flex-col shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-border shrink-0">
+              <div>
+                <span className="text-[11px] font-mono font-bold text-accent-deep tracking-wider uppercase block">
+                  {selectedSessionDetail?.study_guide_content?.trim()
+                    ? "Session Grounding Material"
+                    : "study_guide.md"}
+                </span>
+                <h2 className="font-serif text-xl font-semibold text-ink mt-0.5">
+                  {activePreviewTitle}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="inline-flex items-center gap-1.5 bg-card hover:bg-muted border border-border-strong text-ink px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 pr-1 flex flex-col gap-3">
+              {previewBlocks.map((block, idx) => {
+                const isShortHeading =
+                  block.length < 72 && !block.includes(".") && !block.includes(":");
+                return isShortHeading ? (
+                  <h3
+                    key={idx}
+                    className="font-serif text-base font-semibold text-ink pt-2 first:pt-0 border-b border-border/60 pb-1"
+                  >
+                    {block}
+                  </h3>
+                ) : (
+                  <p key={idx} className="text-sm text-ink-secondary leading-relaxed whitespace-pre-line">
+                    {block}
+                  </p>
+                );
+              })}
+            </div>
+          </aside>
         </div>
       )}
     </div>

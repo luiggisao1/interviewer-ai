@@ -30,7 +30,6 @@ interface DebriefProps {
 export const Debrief: React.FC<DebriefProps> = ({
   evaluation,
   provider,
-  candidateName,
   storageMode = "none",
   savedSessionId,
   onReset,
@@ -166,10 +165,10 @@ export const Debrief: React.FC<DebriefProps> = ({
                   <Database className="w-4 h-4 text-verified-deep shrink-0 mt-0.5" aria-hidden="true" />
                   <div>
                     <strong className="text-verified-deep font-semibold block">
-                      Saved for {candidateName?.trim() || "Candidate"}
+                      Saved Anonymously to Review Archive
                     </strong>
                     <span className="text-emerald-900/80">
-                      Questions, your answers, and LLM senior answers are stored.
+                      Questions, answers, and LLM senior answers are stored without your name.
                     </span>
                   </div>
                 </div>
@@ -189,10 +188,10 @@ export const Debrief: React.FC<DebriefProps> = ({
                   <Shield className="w-4 h-4 text-accent-deep shrink-0 mt-0.5" aria-hidden="true" />
                   <div>
                     <strong className="text-accent-deep font-semibold block">
-                      Saved Senior Benchmark Only ({candidateName?.trim() || "Candidate"})
+                      Saved Senior Benchmark Only (Anonymous)
                     </strong>
                     <span className="text-amber-900/80">
-                      Questions &amp; LLM senior answers stored; personal answers were omitted.
+                      Questions &amp; LLM senior answers stored; personal answers and name were omitted.
                     </span>
                   </div>
                 </div>
@@ -203,6 +202,22 @@ export const Debrief: React.FC<DebriefProps> = ({
                     className="shrink-0 bg-card hover:bg-amber-100 text-accent-deep border border-amber-300 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     View in Review Archive
+                  </button>
+                )}
+              </div>
+            ) : storageMode === "all" ? (
+              <div className="bg-surface border border-border rounded-xl px-3.5 py-2.5 text-xs text-ink-secondary flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-ink-muted shrink-0" aria-hidden="true" />
+                  <span>Not added to archive — this topic already has 3 higher-scored sessions.</span>
+                </div>
+                {onOpenReview && (
+                  <button
+                    type="button"
+                    onClick={onOpenReview}
+                    className="shrink-0 bg-card hover:bg-muted text-ink border border-border-strong px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    View Archive
                   </button>
                 )}
               </div>

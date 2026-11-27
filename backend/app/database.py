@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, event, exists, func, or_
+from sqlalchemy import Engine, create_engine, event, exists, func, inspect, or_, text
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, col, select
 
@@ -25,6 +25,7 @@ from app.schemas import (
 )
 
 _engine_cache: dict[str, Engine] = {}
+MAX_TOP_SCORED_SESSIONS_PER_TOPIC = 3
 
 
 def hash_access_key(raw_key: str) -> str:
@@ -75,6 +76,16 @@ class InterviewRepository:
 
     def init_db(self) -> None:
         SQLModel.metadata.create_all(self.engine)
+        inspector = inspect(self.engine)
+        if inspector.has_table("interview_sessions"):
+            existing_columns = {col_info["name"] for col_info in inspector.get_columns("interview_sessions")}
+            if "study_guide_content" not in existing_columns:
+                with self.engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE interview_sessions ADD COLUMN study_guide_content TEXT NOT NULL DEFAULT ''"
+                        )
+                    )
 
     def save_evaluation(
         self,
@@ -83,6 +94,7 @@ class InterviewRepository:
         plan: InterviewPlan,
         evaluation: Evaluation,
         provider: str,
+        study_guide: str = "",
     ) -> str | None:
         if config.storage_mode == StorageMode.none:
             return None
@@ -93,8 +105,9 @@ class InterviewRepository:
             if config.role == Role.custom and config.custom_role.strip()
             else config.role.value
         )
-        candidate_name = config.candidate_name.strip() or "Anonymous"
+        candidate_name = "Anonymous"
         is_full = config.storage_mode == StorageMode.all
+        section_clean = config.study_guide_section.strip()
 
         session_obj = InterviewSession(
             candidate_name=candidate_name,
@@ -102,7 +115,8 @@ class InterviewRepository:
             role=role_label,
             difficulty=config.difficulty.value,
             mode=config.mode.value,
-            study_guide_section=config.study_guide_section.strip(),
+            study_guide_section=section_clean,
+            study_guide_content=study_guide.strip(),
             plan_title=plan.title,
             provider=provider,
             overall_score=evaluation.overall_score if is_full else None,
@@ -123,8 +137,31 @@ class InterviewRepository:
 
         with Session(self.engine) as db:
             db.add(session_obj)
+            db.flush()
+            kept = True
+            if is_full:
+                topic_key = section_clean.lower()
+                topic_rows = db.exec(
+                    select(InterviewSession).where(
+                        col(InterviewSession.storage_mode) == StorageMode.all.value,
+                        func.lower(col(InterviewSession.study_guide_section)) == topic_key,
+                    )
+                ).all()
+                sorted_rows = sorted(
+                    topic_rows,
+                    key=lambda row: (
+                        row.overall_score if row.overall_score is not None else -1,
+                        row.created_at,
+                    ),
+                    reverse=True,
+                )
+                pruned_ids: set[str] = set()
+                for extra in sorted_rows[MAX_TOP_SCORED_SESSIONS_PER_TOPIC:]:
+                    pruned_ids.add(extra.id)
+                    db.delete(extra)
+                kept = session_obj.id not in pruned_ids
             db.commit()
-            return session_obj.id
+            return session_obj.id if kept else None
 
     @staticmethod
     def _session_filter_conditions(
@@ -150,7 +187,7 @@ class InterviewRepository:
     def _to_session_summary(record: InterviewSession, response_count: int) -> StoredSessionSummary:
         return StoredSessionSummary(
             id=record.id,
-            candidate_name=record.candidate_name,
+            candidate_name="Anonymous",
             storage_mode=StorageMode(record.storage_mode),
             role=record.role,
             difficulty=record.difficulty,
@@ -173,7 +210,7 @@ class InterviewRepository:
         return StoredResponseItem(
             id=response.id,
             session_id=response.session_id,
-            candidate_name=session.candidate_name,
+            candidate_name="Anonymous",
             storage_mode=StorageMode(session.storage_mode),
             role=session.role,
             difficulty=session.difficulty,
@@ -220,7 +257,6 @@ class InterviewRepository:
             )
             conditions.append(
                 or_(
-                    func.lower(col(InterviewSession.candidate_name)).like(pattern, escape="\\"),
                     func.lower(col(InterviewSession.plan_title)).like(pattern, escape="\\"),
                     func.lower(col(InterviewSession.study_guide_section)).like(pattern, escape="\\"),
                     response_match,
@@ -253,7 +289,11 @@ class InterviewRepository:
                 return None
             responses = [self._to_response_item(resp, record) for resp in record.responses]
             summary = self._to_session_summary(record, response_count=len(responses))
-            return StoredSessionDetail(**summary.model_dump(), responses=responses)
+            return StoredSessionDetail(
+                **summary.model_dump(),
+                study_guide_content=record.study_guide_content,
+                responses=responses,
+            )
 
     def list_responses(
         self,
@@ -272,7 +312,6 @@ class InterviewRepository:
             pattern = f"%{_escape_like(search.strip().lower())}%"
             conditions.append(
                 or_(
-                    func.lower(col(InterviewSession.candidate_name)).like(pattern, escape="\\"),
                     func.lower(col(InterviewSession.plan_title)).like(pattern, escape="\\"),
                     func.lower(col(InterviewSession.study_guide_section)).like(pattern, escape="\\"),
                     func.lower(col(InterviewResponse.question)).like(pattern, escape="\\"),
@@ -367,9 +406,7 @@ class InterviewRepository:
         return [group for _, group in records]
 
     def list_candidates(self) -> list[str]:
-        with Session(self.engine) as db:
-            rows = db.exec(select(InterviewSession.candidate_name).distinct()).all()
-        return sorted((str(name) for name in rows), key=str.lower)
+        return []
 
     def list_sections(self) -> list[str]:
         with Session(self.engine) as db:

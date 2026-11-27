@@ -88,6 +88,7 @@ export interface StoredSessionSummary {
 }
 
 export interface StoredSessionDetail extends StoredSessionSummary {
+  study_guide_content?: string;
   responses: StoredResponseItem[];
 }
 

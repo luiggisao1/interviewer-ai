@@ -1,4 +1,4 @@
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import type {
   AudioMode,
   Difficulty,
@@ -17,7 +17,7 @@ import {
 } from "../ui/select";
 import { SegmentedControl } from "../ui/segmented-control";
 import { Switch } from "../ui/switch";
-import { Sparkles, BookOpen, Cpu, ArrowRight, UserCheck, KeyRound, Eye, EyeOff } from "lucide-react";
+import { BookOpen, Cpu, ArrowRight, UserCheck, KeyRound, Eye, EyeOff, FileText, X } from "lucide-react";
 
 interface SetupProps {
   config: InterviewConfig;
@@ -81,9 +81,9 @@ const STORAGE_OPTIONS: { value: StorageMode; label: string }[] = [
 function getStorageHelperText(mode: StorageMode): string {
   switch (mode) {
     case "all":
-      return "Saves your name, questions, your answers, score, and LLM senior answers to the shared read-only Review Archive.";
+      return "Keeps the top 3 highest-scored sessions per topic anonymously (questions, answers, score, and senior benchmarks) in the shared Review Archive.";
     case "senior_only":
-      return "Saves only the questions and LLM senior answers to the shared read-only archive — your personal answers and score are NOT stored.";
+      return "Saves only the questions and LLM senior answers anonymously to the shared read-only archive — your personal answers and score are NOT stored.";
     case "none":
       return "Private session — nothing from this session will be stored in the database.";
   }
@@ -92,11 +92,11 @@ function getStorageHelperText(mode: StorageMode): string {
 function getEngineLabel(engine: string): string {
   switch (engine.toLowerCase()) {
     case "gemini":
-      return "Google Gemini (Gemini 2.5 Flash / 3.8 Flash)";
+      return "Google Gemini";
     case "anthropic":
-      return "Anthropic Claude (Claude 3.5 Sonnet)";
+      return "Anthropic Claude";
     case "openai":
-      return "OpenAI (GPT-4o-mini / gpt-realtime-2.1-mini)";
+      return "OpenAI";
     case "mock":
       return "Deterministic Mock Engine (Testing)";
     default:
@@ -129,26 +129,41 @@ export const Setup: React.FC<SetupProps> = ({
   startInterview,
 }) => {
   const [showKey, setShowKey] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewOpen]);
+
   const engineList = availableEngines.length > 0
     ? availableEngines
     : ["gemini", "anthropic", "openai", "mock"];
 
   const activeEngine = config.provider || provider || engineList[0];
+  const activeSectionTitle =
+    guideSections.find((s) => s.id === selectedSection)?.title ||
+    config.study_guide_section ||
+    "Study Guide";
+  const previewBlocks = studyGuide
+    .replace(/\f/g, "\n\n")
+    .replace(/^Generated on\b.*$/gim, "")
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto py-3 pr-1 flex flex-col gap-5">
       {/* Editorial Masthead Header */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-3 pb-4 border-b border-border shrink-0 max-w-[1240px] w-full mx-auto">
-        <div className="flex flex-col gap-1.5">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-accent-deep bg-accent/10 border border-accent/30 px-2.5 py-0.5 rounded-full tracking-wider uppercase w-fit">
-            <Sparkles className="w-3.5 h-3.5 text-accent-deep" aria-hidden="true" />
-            <span>Practice Atelier · Study Grounded</span>
-          </span>
-          <h1 className="font-serif text-2xl md:text-[28px] font-semibold text-ink tracking-tight leading-tight">
-            Turn what you studied into what you can{" "}
-            <em className="italic text-accent-deep font-semibold">explain aloud.</em>
-          </h1>
-        </div>
+        <h1 className="font-serif text-2xl md:text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          Turn what you studied into what you can{" "}
+          <em className="italic text-accent-deep font-semibold">explain aloud.</em>
+        </h1>
         <p className="text-xs md:text-[13px] text-ink-muted hidden sm:block">
           Grounded directly in study notes · Calibrated for Staff/Senior rigor
         </p>
@@ -171,7 +186,7 @@ export const Setup: React.FC<SetupProps> = ({
                 </h2>
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
-                Tell us who is taking this interview and choose what to save in the review archive
+                Your name is used only by {recruiterName} during the live session and is never published in the shared Review Archive
               </p>
             </div>
           </div>
@@ -271,7 +286,7 @@ export const Setup: React.FC<SetupProps> = ({
                   setSelectedSection(val);
                   if (val === "custom") {
                     setStudyGuide("");
-                    updateConfig("study_guide_section", "Custom Notes");
+                    updateConfig("study_guide_section", "");
                   } else {
                     const matched = guideSections.find((s) => s.id === val);
                     setStudyGuide(matched?.content ?? "");
@@ -294,29 +309,50 @@ export const Setup: React.FC<SetupProps> = ({
             </div>
 
             {selectedSection === "custom" ? (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[13px] font-semibold text-ink">
-                  Custom Material <span className="text-ink-muted font-normal text-xs">({studyGuide.length.toLocaleString()} characters)</span>
-                </label>
-                <textarea
-                  className="bg-muted/60 border border-border-strong rounded-lg p-3 text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent w-full resize-none font-mono leading-relaxed transition-colors"
-                  value={studyGuide}
-                  onChange={(e) => setStudyGuide(e.target.value)}
-                  placeholder="Paste system design notes, API documentation, or architecture details…"
-                  maxLength={30000}
-                  rows={4}
-                />
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="custom-topic-input" className="text-[13px] font-semibold text-ink">
+                    Topic Name <span className="text-ink-muted font-normal text-xs">(Optional)</span>
+                  </label>
+                  <input
+                    id="custom-topic-input"
+                    type="text"
+                    className="bg-muted/60 border border-border-strong rounded-lg px-3.5 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent transition-colors w-full"
+                    value={config.study_guide_section || ""}
+                    onChange={(e) => updateConfig("study_guide_section", e.target.value)}
+                    placeholder="e.g. Python (Custom), Kubernetes, System Design"
+                    maxLength={100}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[13px] font-semibold text-ink">
+                    Custom Material
+                  </label>
+                  <textarea
+                    className="bg-muted/60 border border-border-strong rounded-lg p-3 text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent w-full resize-none font-mono leading-relaxed transition-colors"
+                    value={studyGuide}
+                    onChange={(e) => setStudyGuide(e.target.value)}
+                    placeholder="Paste system design notes, API documentation, or architecture details…"
+                    maxLength={30000}
+                    rows={4}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="bg-surface border border-border rounded-lg px-3.5 py-2.5">
-                <div className="flex items-center gap-2 text-[13px] text-ink-secondary flex-wrap">
-                  <span className="w-2 h-2 rounded-full bg-verified animate-pulse" />
-                  <strong className="text-ink font-semibold">Loaded {studyGuide.length.toLocaleString()} characters</strong>
-                  <span className="text-border-strong">·</span>
-                  <span className="text-xs font-mono font-semibold bg-card border border-border text-accent-deep px-2 py-0.5 rounded">
-                    Grounded in study_guide.md
-                  </span>
+              <div className="bg-surface border border-border rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-xs text-ink-secondary">
+                  <span className="w-2 h-2 rounded-full bg-verified shrink-0" />
+                  <span className="font-mono font-medium text-ink">Grounded in study_guide.md</span>
                 </div>
+                <button
+                  type="button"
+                  disabled={guideLoading || !studyGuide.trim()}
+                  onClick={() => setPreviewOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-deep hover:text-ink bg-card border border-border-strong hover:border-ink/40 px-2.5 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <FileText className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Preview Notes</span>
+                </button>
               </div>
             )}
 
@@ -450,10 +486,10 @@ export const Setup: React.FC<SetupProps> = ({
                   <SelectContent>
                     <SelectItem value="web">Free Web Voice (Browser STT/TTS)</SelectItem>
                     {activeEngine === "gemini" && (
-                      <SelectItem value="gemini_live">Gemini Live Multimodal Voice (Direct WebSocket Audio)</SelectItem>
+                      <SelectItem value="gemini_live">Gemini Live Multimodal Voice</SelectItem>
                     )}
                     {activeEngine === "openai" && (
-                      <SelectItem value="openai_realtime">OpenAI Realtime Voice (gpt-realtime-2.1-mini)</SelectItem>
+                      <SelectItem value="openai_realtime">OpenAI Realtime Voice</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
@@ -473,26 +509,28 @@ export const Setup: React.FC<SetupProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="same">Same as Interviewer</SelectItem>
-                  <SelectItem value="gemini">Google Gemini (Gemini 2.5 Flash)</SelectItem>
-                  <SelectItem value="openai">OpenAI (GPT-4o-mini)</SelectItem>
-                  <SelectItem value="anthropic">Anthropic (Claude 3.5 Sonnet)</SelectItem>
+                  <SelectItem value="gemini">Google Gemini</SelectItem>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic Claude</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="flex items-center justify-between bg-surface border border-border px-3.5 py-2.5 rounded-lg gap-3.5">
-              <div className="flex flex-col">
-                <strong className="block text-[13.5px] font-semibold text-ink">Read Answers Aloud</strong>
-                <p className="text-xs text-ink-muted mt-0.5">
-                  Synthesize {recruiterName}&rsquo;s questions via Web Audio / Browser TTS
-                </p>
+            {audioMode === "web" && (
+              <div className="flex items-center justify-between bg-surface border border-border px-3.5 py-2.5 rounded-lg gap-3.5">
+                <div className="flex flex-col">
+                  <strong className="block text-[13.5px] font-semibold text-ink">Read Questions Aloud</strong>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    Synthesize {recruiterName}&rsquo;s questions via Web Audio / Browser TTS
+                  </p>
+                </div>
+                <Switch
+                  checked={autoSpeak}
+                  onCheckedChange={setAutoSpeak}
+                  aria-label="Read interviewer questions aloud"
+                />
               </div>
-              <Switch
-                checked={autoSpeak}
-                onCheckedChange={setAutoSpeak}
-                aria-label="Read interviewer responses aloud"
-              />
-            </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[13px] font-semibold text-ink">
@@ -538,6 +576,60 @@ export const Setup: React.FC<SetupProps> = ({
           </div>
         </div>
       </form>
+
+      {/* Study Guide Preview Reading Drawer */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 bg-ink/35 backdrop-blur-sm z-[1000] flex justify-end"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Study Guide Preview: ${activeSectionTitle}`}
+            className="w-full max-w-xl h-full bg-paper border-l border-border-strong p-6 flex flex-col shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-border shrink-0">
+              <div>
+                <span className="text-[11px] font-mono font-bold text-accent-deep tracking-wider uppercase block">
+                  study_guide.md
+                </span>
+                <h2 className="font-serif text-xl font-semibold text-ink mt-0.5">
+                  {activeSectionTitle}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="inline-flex items-center gap-1.5 bg-card hover:bg-muted border border-border-strong text-ink px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 pr-1 flex flex-col gap-3">
+              {previewBlocks.map((block, idx) => {
+                const isShortHeading =
+                  block.length < 72 && !block.includes(".") && !block.includes(":");
+                return isShortHeading ? (
+                  <h3
+                    key={idx}
+                    className="font-serif text-base font-semibold text-ink pt-2 first:pt-0 border-b border-border/60 pb-1"
+                  >
+                    {block}
+                  </h3>
+                ) : (
+                  <p key={idx} className="text-sm text-ink-secondary leading-relaxed whitespace-pre-line">
+                    {block}
+                  </p>
+                );
+              })}
+            </div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 };

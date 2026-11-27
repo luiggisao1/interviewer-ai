@@ -46,8 +46,13 @@ def format_session_markdown(
     include_candidate_answers: bool = True,
     include_senior_answers: bool = True,
 ) -> str:
+    title = (
+        detail.study_guide_section.strip()
+        or detail.plan_title.strip()
+        or f"{detail.difficulty} {detail.role}"
+    )
     lines: list[str] = [
-        f"# Interview Session: {detail.candidate_name}",
+        f"# Interview Session: {title}",
         "",
     ]
     if detail.plan_title.strip():
@@ -137,7 +142,7 @@ def format_questions_markdown(
 
             lines.extend(
                 [
-                    f"### {entry_idx}. {entry.candidate_name} ({' · '.join(header_meta)})",
+                    f"### Response {entry_idx} ({' · '.join(header_meta)})",
                     "",
                 ]
             )

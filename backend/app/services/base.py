@@ -152,6 +152,8 @@ class AIProvider(ABC):
         answer_pairs = self.build_answer_pairs(request.transcript, default_q)
 
         payload = request.model_dump(mode="json")
+        if isinstance(payload.get("config"), dict):
+            payload["config"]["candidate_name"] = ""
         payload["answer_pairs"] = [p.model_dump() for p in answer_pairs]
         system = build_evaluation_prompt(count=len(answer_pairs))
         return EvaluationContext(

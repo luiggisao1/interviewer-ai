@@ -41,8 +41,13 @@ Keep each bullet point punchy and concise so the complete evaluation fits comfor
 
 The payload contains an indexed answer_pairs list with {count} captured candidate answers. Return exactly {count}
 senior_answers items, one for every answer_pairs item, in the same order. Do not omit short, incomplete, incorrect,
-or follow-up answers; those are especially important to coach. Copy each matching question and candidate_answer
-accurately.
+or follow-up answers; those are especially important to coach. Copy each matching candidate_answer accurately.
+For each item:
+- Rewrite `question` as a clean, standalone technical interview question — strictly strip all greetings, small talk,
+  conversational transitions, and any candidate names (e.g. turn "Hello Alex! Great to meet you. Let's start with
+  Python: how does the GIL work?" into "How does the Python GIL work?").
+- Never include any candidate name in `question`, `summary`, `strengths`, `improvements`, `study_guide_feedback`,
+  `technical_feedback`, `senior_answer`, `why_stronger`, or `next_steps`.
 For each item, provide a strong first-person senior-level answer grounded in the guide and a concise explanation of
 why it is stronger. Demonstrate practical experience, trade-offs, production concerns, and clear decision-making
 without inventing personal facts or metrics. Use clearly hypothetical examples when needed."""
@@ -118,9 +123,13 @@ Keep each bullet point punchy and concise so the complete evaluation fits comfor
 
 The payload contains an indexed answer_pairs list with {count} captured candidate answers. Return exactly {count}
 senior_answers items, one for every answer_pairs item, in the same order. Do not omit short, incomplete, incorrect,
-or follow-up answers; those are especially important to coach. Copy each matching question and candidate_answer
-accurately.
+or follow-up answers; those are especially important to coach. Copy each matching candidate_answer accurately.
 For each item:
+- Rewrite `question` as a clean, standalone technical interview question — strictly strip all greetings, small talk,
+  conversational transitions, and any candidate names (e.g. turn "Hello Alex! Great to meet you. Let's start with
+  Python: how does the GIL work?" into "How does the Python GIL work?").
+- Never include any candidate name in `question`, `summary`, `strengths`, `improvements`, `study_guide_feedback`,
+  `technical_feedback`, `senior_answer`, `why_stronger`, or `next_steps`.
 - If the candidate's answer was incomplete, developing, or missing depth (< 90): provide a sharp, precise,
   first-person senior-level spoken interview answer grounded in the guide, and a concise why_stronger explanation
   (1-2 sentences) highlighting the specific missing concepts, trade-offs, or production concerns.

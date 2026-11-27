@@ -1041,7 +1041,7 @@ export default function App() {
       const activeProvider = config.provider || provider || "anthropic";
       const sectionTitle =
         selectedSection === "custom"
-          ? "Custom Notes"
+          ? (config.study_guide_section?.trim() || "Custom Notes")
           : (guideSections.find((s) => s.id === selectedSection)?.title ?? selectedSection);
       const activeConfig: InterviewConfig = {
         ...config,

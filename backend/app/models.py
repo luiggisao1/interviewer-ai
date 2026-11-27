@@ -14,6 +14,7 @@ class InterviewSession(SQLModel, table=True):
     difficulty: str = Field(max_length=50)
     mode: str = Field(max_length=50)
     study_guide_section: str = Field(default="", index=True, max_length=100)
+    study_guide_content: str = Field(default="")
     plan_title: str = Field(default="", max_length=300)
     provider: str = Field(default="", max_length=50)
     overall_score: int | None = Field(default=None)

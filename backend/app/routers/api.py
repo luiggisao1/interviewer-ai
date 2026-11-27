@@ -122,6 +122,7 @@ async def evaluate(
             plan=request.plan,
             evaluation=result,
             provider=provider.name,
+            study_guide=request.study_guide,
         )
         return EvaluationResponse(
             evaluation=result,

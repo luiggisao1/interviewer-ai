@@ -228,6 +228,7 @@ class StoredSessionSummary(BaseModel):
 
 
 class StoredSessionDetail(StoredSessionSummary):
+    study_guide_content: str = ""
     responses: list[StoredResponseItem] = Field(default_factory=list)
 
 
