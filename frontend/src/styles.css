@@ -3,18 +3,40 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --paper: 255 251 235;
+    --surface: 254 249 231;
+    --card: 255 255 255;
+    --muted: 245 243 238;
+    --border: 231 229 228;
+    --border-strong: 214 211 209;
+    --ink: 24 24 27;
+    --ink-secondary: 63 63 70;
+    --ink-muted: 87 83 78;
+    --accent: 217 119 6;
+    --accent-deep: 180 83 9;
+    --verified: 5 150 105;
+    --verified-deep: 4 120 87;
+    --danger: 220 38 38;
+    --danger-deep: 185 28 28;
+  }
+
   * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
   }
 
+  html {
+    scroll-padding-top: 72px;
+  }
+
   body {
-    @apply bg-[#060A14] text-slate-200 antialiased;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    background-image: 
-      radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.06) 0%, transparent 60%),
-      radial-gradient(circle at 90% 40%, rgba(56, 189, 248, 0.03) 0%, transparent 40%);
+    @apply bg-paper text-ink antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-image:
+      radial-gradient(circle at 18% 0%, rgba(217, 119, 6, 0.05) 0%, transparent 48%),
+      radial-gradient(circle at 85% 90%, rgba(120, 113, 108, 0.04) 0%, transparent 45%);
     min-height: 100vh;
     line-height: 1.5;
   }
@@ -31,11 +53,19 @@
 }
 
 @keyframes eqBounce {
-  0%, 100% { height: 10px; opacity: 0.4; }
+  0%, 100% { height: 10px; opacity: 0.45; }
   50% { height: 48px; opacity: 1; }
 }
 
-/* Custom subtle scrollbar */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Custom subtle warm stone scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -46,10 +76,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(120, 113, 108, 0.3);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(59, 130, 246, 0.4);
+  background: rgba(120, 113, 108, 0.5);
 }

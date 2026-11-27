@@ -1248,7 +1248,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden flex flex-col bg-[#060A14] text-slate-200 font-sans">
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col bg-paper text-ink font-sans">
       <Topbar
         provider={provider}
         stage={stage}
@@ -1350,7 +1350,7 @@ export default function App() {
         {stage === "admin" && <AdminPanel onBack={reset} />}
       </main>
 
-      <footer className="text-center text-[11px] text-slate-500 py-2 border-t border-blue-500/10 shrink-0">
+      <footer className="text-center text-xs text-ink-muted py-2 border-t border-border bg-card/60 shrink-0">
         Interviewer AI · Grounded in study_guide.md
       </footer>
     </div>

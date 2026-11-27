@@ -1,5 +1,5 @@
 import React from "react";
-import { Database, Plus, User } from "lucide-react";
+import { Database, Mic, Plus, User, X } from "lucide-react";
 import type { StorageMode } from "../../types";
 
 interface TopbarProps {
@@ -34,41 +34,41 @@ export const Topbar: React.FC<TopbarProps> = ({
   const storageLabel = getStorageLabel(storageMode);
 
   return (
-    <header className="h-[60px] px-4 md:px-8 flex items-center justify-between bg-[#0E1626]/85 backdrop-blur-md border-b border-blue-500/15 shrink-0 z-50">
+    <header className="h-[60px] px-4 md:px-8 flex items-center justify-between bg-card/90 backdrop-blur-md border-b border-border shrink-0 z-50">
       <div className="flex items-center gap-3">
         <a
           href="#"
-          className="flex items-center gap-2.5 text-white font-bold text-base tracking-tight select-none"
+          className="flex items-center gap-2.5 text-ink font-semibold text-base tracking-tight select-none rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           onClick={(e) => {
             e.preventDefault();
             if (stage !== "setup") onReset();
           }}
         >
-          <span className="w-8 h-8 rounded-lg bg-blue-600 text-white grid place-items-center text-xs font-extrabold shadow-lg shadow-blue-600/30">
-            IA
+          <span className="w-8 h-8 rounded-lg bg-ink text-paper grid place-items-center shadow-sm">
+            <Mic className="w-4 h-4 text-amber-400" aria-hidden="true" />
           </span>
-          <span>
-            Interviewer <strong className="text-sky-400 font-extrabold">AI</strong>
+          <span className="font-serif text-lg tracking-tight">
+            Interviewer <em className="italic text-accent-deep font-semibold">AI</em>
           </span>
         </a>
       </div>
 
       <div className="flex items-center gap-2.5 md:gap-3.5 text-xs">
         {trimmedName && (stage === "interview" || stage === "results") && (
-          <div className="hidden sm:flex items-center gap-1.5 bg-sky-950/60 border border-sky-500/25 text-sky-200 px-2.5 py-1 rounded-full font-medium">
-            <User className="w-3.5 h-3.5 text-sky-400" />
+          <div className="hidden sm:flex items-center gap-1.5 bg-surface border border-accent/30 text-ink px-2.5 py-1 rounded-full font-medium">
+            <User className="w-3.5 h-3.5 text-accent-deep" aria-hidden="true" />
             <span>{trimmedName}</span>
           </div>
         )}
 
-        <div className="hidden md:flex items-center gap-2 text-slate-400">
+        <div className="hidden md:flex items-center gap-2 text-ink-muted font-mono">
           <span
-            className={`w-2 h-2 rounded-full shadow-sm ${
+            className={`w-2 h-2 rounded-full ${
               storageMode === "none"
-                ? "bg-slate-400 shadow-slate-400"
+                ? "bg-ink-muted/50"
                 : storageMode === "senior_only"
-                  ? "bg-sky-400 shadow-sky-400"
-                  : "bg-emerald-400 shadow-emerald-400"
+                  ? "bg-accent"
+                  : "bg-verified"
             }`}
           />
           <span>
@@ -80,13 +80,13 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onOpenReview}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               stage === "review"
-                ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/30"
-                : "bg-blue-500/10 hover:bg-blue-500/20 text-sky-300 hover:text-white border-blue-500/25"
+                ? "bg-ink text-white border-ink shadow-sm"
+                : "bg-card hover:bg-surface text-ink border-border-strong hover:border-ink/40"
             }`}
           >
-            <Database className="w-3.5 h-3.5" />
+            <Database className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Review Archive</span>
           </button>
         )}
@@ -95,9 +95,9 @@ export const Topbar: React.FC<TopbarProps> = ({
           <button
             type="button"
             onClick={onReset}
-            className="flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-emerald-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-verified-deep border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" />
             <span>New Interview</span>
           </button>
         )}
@@ -105,11 +105,12 @@ export const Topbar: React.FC<TopbarProps> = ({
         {(stage === "interview" || stage === "results") && (
           <button
             type="button"
-            className="bg-blue-500/10 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-blue-500/20 hover:border-red-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 bg-card hover:bg-red-50 text-ink-secondary hover:text-danger-deep border border-border-strong hover:border-red-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={onReset}
             title="Exit Session"
           >
-            Exit Session ✕
+            <span>Exit Session</span>
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         )}
       </div>

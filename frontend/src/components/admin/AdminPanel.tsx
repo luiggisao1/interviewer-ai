@@ -38,24 +38,24 @@ function getKeyStatus(item: AccessKeySummary): { label: string; badgeClass: stri
   if (!item.is_active) {
     return {
       label: "Revoked",
-      badgeClass: "bg-red-950/60 border-red-500/35 text-red-300",
+      badgeClass: "bg-red-50 border-red-200 text-danger-deep",
     };
   }
   if (item.expires_at && new Date(item.expires_at).getTime() <= Date.now()) {
     return {
       label: "Expired",
-      badgeClass: "bg-amber-950/60 border-amber-500/35 text-amber-300",
+      badgeClass: "bg-amber-50 border-amber-200 text-accent-deep",
     };
   }
   if (item.max_uses !== null && item.uses_count >= item.max_uses) {
     return {
       label: "Limit Reached",
-      badgeClass: "bg-amber-950/60 border-amber-500/35 text-amber-300",
+      badgeClass: "bg-amber-50 border-amber-200 text-accent-deep",
     };
   }
   return {
     label: "Active",
-    badgeClass: "bg-emerald-950/60 border-emerald-500/35 text-emerald-300",
+    badgeClass: "bg-emerald-50 border-emerald-200 text-verified-deep",
   };
 }
 
@@ -195,14 +195,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   if (!adminSecret) {
     return (
       <div className="flex-1 min-h-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-[#0E1626] border border-blue-500/20 rounded-[18px] p-6 shadow-2xl flex flex-col gap-5">
-          <div className="flex items-start gap-3 pb-3 border-b border-white/10">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-              <Lock className="w-5 h-5" />
+        <div className="w-full max-w-md bg-card border border-border rounded-xl p-6 shadow-editorial flex flex-col gap-5">
+          <div className="flex items-start gap-3 pb-3 border-b border-border">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 text-accent-deep flex items-center justify-center shrink-0">
+              <Lock className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white leading-tight">Restricted Access</h1>
-              <p className="text-xs text-slate-400 mt-1">
+              <h1 className="font-serif text-xl font-semibold text-ink leading-tight">Restricted Access</h1>
+              <p className="text-xs text-ink-muted mt-1">
                 Enter your passphrase to continue.
               </p>
             </div>
@@ -210,7 +210,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
 
           <form onSubmit={handleUnlock} className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="admin-secret-input" className="text-xs font-semibold text-slate-200">
+              <label htmlFor="admin-secret-input" className="text-xs font-semibold text-ink">
                 Passphrase
               </label>
               <input
@@ -220,12 +220,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 value={secretInput}
                 onChange={(e) => setSecretInput(e.target.value)}
                 placeholder="Enter passphrase..."
-                className="bg-[#080D1A] border border-blue-500/20 rounded-[10px] px-3.5 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono w-full"
+                className="bg-muted/60 border border-border-strong rounded-lg px-3.5 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent font-mono w-full"
               />
             </div>
 
             {error && (
-              <div className="bg-red-500/15 border border-red-500/30 text-red-200 px-3.5 py-2 rounded-lg text-xs font-medium">
+              <div className="bg-red-50 border border-red-200 text-danger-deep px-3.5 py-2 rounded-lg text-xs font-medium">
                 {error}
               </div>
             )}
@@ -234,17 +234,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
               <button
                 type="button"
                 onClick={onBack}
-                className="h-[42px] px-4 rounded-xl bg-[#080D1A] border border-white/10 hover:border-white/25 text-slate-300 hover:text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="h-[42px] px-4 rounded-lg bg-muted/70 border border-border-strong hover:bg-surface text-ink text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>Back</span>
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 h-[42px] bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl inline-flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-60"
+                className="flex-1 h-[42px] bg-ink hover:bg-ink/90 text-white font-semibold text-sm rounded-lg inline-flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
-                <Unlock className="w-4 h-4" />
+                <Unlock className="w-4 h-4 text-amber-400" aria-hidden="true" />
                 <span>{loading ? "Verifying…" : "Continue"}</span>
               </button>
             </div>
@@ -257,28 +257,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden w-full max-w-[1280px] mx-auto py-1">
       {/* Header */}
-      <div className="bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-4 md:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+      <div className="bg-card border border-border rounded-xl p-4 md:p-5 shadow-editorial flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-            <KeyRound className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 text-accent-deep flex items-center justify-center shrink-0">
+            <KeyRound className="w-4 h-4" aria-hidden="true" />
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-lg font-bold text-white tracking-tight">Access Key Management</h1>
+              <h1 className="font-serif text-xl font-semibold text-ink tracking-tight">Access Key Management</h1>
               <span
                 className={`inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full border ${
                   requireAccessKey
-                    ? "bg-emerald-950/60 border-emerald-500/35 text-emerald-300"
-                    : "bg-amber-950/60 border-amber-500/35 text-amber-300"
+                    ? "bg-emerald-50 border-emerald-200 text-verified-deep"
+                    : "bg-amber-50 border-amber-200 text-accent-deep"
                 }`}
               >
-                {requireAccessKey ? <ShieldCheck className="w-3 h-3" /> : <ShieldOff className="w-3 h-3" />}
+                {requireAccessKey ? <ShieldCheck className="w-3 h-3" aria-hidden="true" /> : <ShieldOff className="w-3 h-3" aria-hidden="true" />}
                 <span>
                   Access Key Gate: {requireAccessKey ? "ON" : "OFF"}
                 </span>
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-ink-muted mt-0.5">
               Issue invite keys so candidates can practice using your private backend Gemini/AI credits safely
             </p>
           </div>
@@ -288,54 +288,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           <button
             type="button"
             onClick={() => void loadKeys(adminSecret)}
-            className="h-[36px] px-3 rounded-lg bg-[#080D1A] border border-blue-500/20 hover:border-blue-500/40 text-slate-300 hover:text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="h-[36px] px-3 rounded-lg bg-muted/70 border border-border-strong hover:bg-surface text-ink text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-sky-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-accent-deep" : ""}`} aria-hidden="true" />
             <span>Refresh</span>
           </button>
           <button
             type="button"
             onClick={handleLock}
-            className="h-[36px] px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-300 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="h-[36px] px-3 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-danger-deep text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Lock className="w-3.5 h-3.5" />
+            <Lock className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Lock</span>
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-500/15 border border-red-500/30 text-red-200 px-4 py-2.5 rounded-xl text-xs font-medium shrink-0">
+        <div className="bg-red-50 border border-red-200 text-danger-deep px-4 py-2.5 rounded-xl text-xs font-medium shrink-0">
           {error}
         </div>
       )}
 
       {/* One-time created key banner */}
       {createdKey && (
-        <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-[18px] p-4 shadow-lg flex flex-col gap-2.5 shrink-0">
+        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4 shadow-sm flex flex-col gap-2.5 shrink-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-300 uppercase tracking-wider">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <div className="flex items-center gap-2 text-xs font-mono font-bold text-verified-deep uppercase tracking-wider">
+              <AlertTriangle className="w-4 h-4 text-accent-deep" aria-hidden="true" />
               <span>New Key Created for &ldquo;{createdKey.label}&rdquo; — Copy Now (Shown Once)</span>
             </div>
             <button
               type="button"
               onClick={() => setCreatedKey(null)}
-              className="text-xs text-slate-400 hover:text-white cursor-pointer"
+              className="text-xs text-ink-muted hover:text-ink cursor-pointer"
             >
               Dismiss
             </button>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <code className="flex-1 min-w-[240px] bg-[#080D1A] border border-emerald-500/30 rounded-xl px-3.5 py-2.5 text-sm font-mono text-emerald-200 select-all break-all">
+            <code className="flex-1 min-w-[240px] bg-card border border-emerald-300 rounded-lg px-3.5 py-2.5 text-sm font-mono text-ink select-all break-all">
               {createdKey.raw_key}
             </code>
             <button
               type="button"
               onClick={() => void handleCopyRawKey()}
-              className="h-[42px] px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              className="h-[42px] px-4 rounded-lg bg-verified hover:bg-verified-deep text-white font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4" aria-hidden="true" /> : <Copy className="w-4 h-4" aria-hidden="true" />}
               <span>{copied ? "Copied!" : "Copy Key"}</span>
             </button>
           </div>
@@ -347,18 +347,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         {/* Left: Create Key Form */}
         <form
           onSubmit={handleCreateKey}
-          className="lg:col-span-4 bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-5 flex flex-col gap-4 overflow-y-auto"
+          className="lg:col-span-4 bg-card border border-border rounded-xl p-5 shadow-editorial flex flex-col gap-4 overflow-y-auto"
         >
-          <div className="pb-2.5 border-b border-white/10">
-            <h2 className="text-base font-bold text-white">Generate New Access Key</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+          <div className="pb-2.5 border-b border-border">
+            <h2 className="font-serif text-lg font-semibold text-ink">Generate New Access Key</h2>
+            <p className="text-xs text-ink-muted mt-0.5">
               Only the SHA-256 hash and prefix are stored in the database.
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="key-label-input" className="text-xs font-semibold text-slate-200">
-              Label / Person Name <span className="text-sky-400">*</span>
+            <label htmlFor="key-label-input" className="text-xs font-semibold text-ink">
+              Label / Person Name <span className="text-accent-deep">*</span>
             </label>
             <input
               id="key-label-input"
@@ -367,13 +367,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
               onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. Maria - Python Practice"
               maxLength={100}
-              className="bg-[#080D1A] border border-blue-500/15 rounded-[10px] px-3.5 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full"
+              className="bg-muted/60 border border-border-strong rounded-lg px-3.5 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent w-full"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="key-max-uses" className="text-xs font-semibold text-slate-200">
+              <label htmlFor="key-max-uses" className="text-xs font-semibold text-ink">
                 Max Interviews
               </label>
               <input
@@ -384,12 +384,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 value={maxUsesInput}
                 onChange={(e) => setMaxUsesInput(e.target.value)}
                 placeholder="Unlimited"
-                className="bg-[#080D1A] border border-blue-500/15 rounded-[10px] px-3 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full"
+                className="bg-muted/60 border border-border-strong rounded-lg px-3 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent w-full"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="key-expires-days" className="text-xs font-semibold text-slate-200">
+              <label htmlFor="key-expires-days" className="text-xs font-semibold text-ink">
                 Expires (Days)
               </label>
               <input
@@ -400,35 +400,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 value={expiresDaysInput}
                 onChange={(e) => setExpiresDaysInput(e.target.value)}
                 placeholder="Never"
-                className="bg-[#080D1A] border border-blue-500/15 rounded-[10px] px-3 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full"
+                className="bg-muted/60 border border-border-strong rounded-lg px-3 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent w-full"
               />
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-xs text-ink-muted leading-relaxed">
             Leave Max Interviews or Expires blank for unlimited uses or no expiration date.
           </p>
 
           <button
             type="submit"
             disabled={submitting}
-            className="mt-auto h-[44px] w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl inline-flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer disabled:opacity-60"
+            className="mt-auto h-[44px] w-full bg-ink hover:bg-ink/90 text-white font-semibold text-sm rounded-lg inline-flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 text-amber-400" aria-hidden="true" />
             <span>{submitting ? "Generating…" : "Generate Access Key"}</span>
           </button>
         </form>
 
         {/* Right: Existing Keys List */}
-        <div className="lg:col-span-8 bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-5 flex flex-col gap-3 min-h-0 overflow-y-auto">
-          <div className="flex items-center justify-between pb-2.5 border-b border-white/10 shrink-0">
-            <h2 className="text-base font-bold text-white">Issued Keys ({keys.length})</h2>
-            <span className="text-xs text-slate-400">Stored as SHA-256 hashes</span>
+        <div className="lg:col-span-8 bg-card border border-border rounded-xl p-5 shadow-editorial flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <div className="flex items-center justify-between pb-2.5 border-b border-border shrink-0">
+            <h2 className="font-serif text-lg font-semibold text-ink">Issued Keys ({keys.length})</h2>
+            <span className="text-xs font-mono text-ink-muted">Stored as SHA-256 hashes</span>
           </div>
 
           {keys.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-8 text-slate-400 text-sm">
-              <KeyRound className="w-7 h-7 text-slate-500" />
+            <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-8 text-ink-muted text-sm">
+              <KeyRound className="w-7 h-7 text-ink-muted/60" aria-hidden="true" />
               <span>No access keys have been issued yet.</span>
             </div>
           ) : (
@@ -438,12 +438,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 return (
                   <div
                     key={item.id}
-                    className="bg-[#080D1A] border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className="bg-surface/40 border border-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm text-white">{item.label}</span>
-                        <code className="text-xs font-mono bg-white/5 border border-white/10 text-sky-300 px-2 py-0.5 rounded">
+                        <span className="font-bold text-sm text-ink">{item.label}</span>
+                        <code className="text-xs font-mono bg-muted border border-border-strong text-ink-secondary px-2 py-0.5 rounded">
                           {item.key_prefix}
                         </code>
                         <span
@@ -453,15 +453,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                      <div className="flex items-center gap-3 text-xs text-ink-muted flex-wrap">
                         <span>
                           Sessions:{" "}
-                          <strong className="text-slate-200 font-mono">
+                          <strong className="text-ink font-mono">
                             {item.uses_count} / {item.max_uses ?? "∞"}
                           </strong>
                         </span>
                         <span>
-                          LLM calls: <strong className="text-slate-200 font-mono">{item.requests_used}</strong>
+                          LLM calls: <strong className="text-ink font-mono">{item.requests_used}</strong>
                         </span>
                         <span>Last used: {formatDate(item.last_used_at)}</span>
                         <span>Expires: {formatDate(item.expires_at)}</span>
@@ -472,10 +472,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                       type="button"
                       disabled={togglingId === item.id}
                       onClick={() => void handleToggleKey(item)}
-                      className={`shrink-0 h-[34px] px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer disabled:opacity-50 ${
+                      className={`shrink-0 h-[34px] px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                         item.is_active
-                          ? "bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-300"
-                          : "bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30 text-emerald-300"
+                          ? "bg-red-50 hover:bg-red-100 border-red-200 text-danger-deep"
+                          : "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-verified-deep"
                       }`}
                     >
                       {togglingId === item.id

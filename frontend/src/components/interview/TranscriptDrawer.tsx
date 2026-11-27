@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { Volume2, X } from "lucide-react";
 import type { Message } from "../../types";
 
 interface TranscriptDrawerProps {
@@ -16,29 +17,43 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
   recruiterName = "Iris",
   onSpeak,
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 bg-[#060A14]/80 backdrop-blur-md z-[1000] flex justify-end"
+      className="fixed inset-0 bg-ink/35 backdrop-blur-sm z-[1000] flex justify-end"
       onClick={onClose}
     >
       <aside
-        className="w-full max-w-lg h-full bg-[#0E1626] border-l border-blue-500/20 p-6 flex flex-col shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Interview Transcript"
+        className="w-full max-w-lg h-full bg-paper border-l border-border-strong p-6 flex flex-col shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between pb-4 border-b border-border shrink-0">
           <div>
-            <span className="text-[10px] font-mono font-bold text-sky-400 tracking-wider block">
+            <span className="text-[11px] font-mono font-bold text-accent-deep tracking-wider uppercase block">
               CHRONOLOGICAL RECORD
             </span>
-            <h3 className="text-base font-bold text-white">Interview Transcript</h3>
+            <h3 className="font-serif text-lg font-semibold text-ink">Interview Transcript</h3>
           </div>
           <button
-            className="bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            type="button"
+            className="inline-flex items-center gap-1.5 bg-card hover:bg-muted border border-border-strong text-ink px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={onClose}
           >
-            ✕ Close
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Close</span>
           </button>
         </div>
 
@@ -48,25 +63,27 @@ export const TranscriptDrawer: React.FC<TranscriptDrawerProps> = ({
               key={idx}
               className={`p-3.5 rounded-xl border flex flex-col gap-1.5 ${
                 msg.role === "interviewer"
-                  ? "bg-[#080D1A] border-blue-500/15"
-                  : "bg-blue-600/10 border-blue-500/25 ml-4"
+                  ? "bg-card border-border"
+                  : "bg-surface border-accent/25 ml-4"
               }`}
             >
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className={msg.role === "interviewer" ? "text-sky-400 font-bold" : "text-emerald-400 font-bold"}>
+                <span className={msg.role === "interviewer" ? "text-accent-deep font-bold" : "text-verified-deep font-bold"}>
                   {msg.role === "interviewer" ? `${recruiterName} (Staff AI)` : "You (Candidate)"}
                 </span>
                 {msg.role === "interviewer" && (
                   <button
-                    className="text-slate-400 hover:text-white text-[11px] flex items-center gap-1 cursor-pointer"
+                    type="button"
+                    className="text-ink-muted hover:text-ink text-xs flex items-center gap-1 cursor-pointer rounded px-1.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     onClick={() => onSpeak(msg.content)}
                     title="Play message aloud"
                   >
-                    🔊 Read
+                    <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Read</span>
                   </button>
                 )}
               </div>
-              <p className="text-sm text-slate-200 leading-relaxed font-sans">{msg.content}</p>
+              <p className="text-sm text-ink leading-relaxed font-sans">{msg.content}</p>
             </div>
           ))}
         </div>

@@ -20,48 +20,48 @@ export const StudyGroundingTile: React.FC<StudyGroundingTileProps> = ({
   const progressPercent = Math.min(100, Math.round((answeredCount / plan.estimated_turns) * 100));
 
   return (
-    <div className="md:col-span-4 bg-[#0E1626] border border-blue-500/15 hover:border-blue-500/35 rounded-[18px] p-6 shadow-2xl flex flex-col justify-between transition-colors">
-      <div className="mb-3.5">
-        <span className="text-[10px] font-mono font-bold text-sky-400 tracking-wider block mb-1">
+    <div className="md:col-span-4 bg-card border border-border hover:border-border-strong rounded-xl p-6 shadow-editorial flex flex-col justify-between transition-colors">
+      <div className="mb-3.5 pb-2.5 border-b border-border">
+        <span className="text-[11px] font-mono font-bold text-accent-deep tracking-wider uppercase block mb-0.5">
           NOTES GROUNDING
         </span>
-        <h4 className="text-sm font-bold text-white">Session Telemetry</h4>
+        <h3 className="font-serif text-base font-semibold text-ink">Session Telemetry</h3>
       </div>
 
       <div className="flex flex-col gap-3.5">
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="flex items-center justify-between text-xs text-ink-muted">
             <span>Interview Progress</span>
-            <strong className="text-white font-semibold">
+            <strong className="text-ink font-semibold font-mono">
               {answeredCount} / {plan.estimated_turns} Turns ({progressPercent}%)
             </strong>
           </div>
-          <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-muted border border-border h-2.5 rounded-full overflow-hidden">
             <div
-              className="bg-sky-400 h-full rounded-full transition-all duration-300"
+              className="bg-accent h-full rounded-full transition-all duration-300"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-[#080D1A] border border-blue-500/10 p-2.5 rounded-lg">
-            <span className="text-[10px] text-slate-500 block uppercase">Role</span>
-            <strong className="text-white text-xs block truncate">{config.role}</strong>
+          <div className="bg-muted/70 border border-border p-2.5 rounded-lg">
+            <span className="text-[10px] font-mono text-ink-muted block uppercase">Role</span>
+            <strong className="text-ink text-xs font-semibold block truncate mt-0.5">{config.role}</strong>
           </div>
-          <div className="bg-[#080D1A] border border-blue-500/10 p-2.5 rounded-lg">
-            <span className="text-[10px] text-slate-500 block uppercase">Track</span>
-            <strong className="text-white text-xs block truncate">
+          <div className="bg-muted/70 border border-border p-2.5 rounded-lg">
+            <span className="text-[10px] font-mono text-ink-muted block uppercase">Track</span>
+            <strong className="text-ink text-xs font-semibold block truncate mt-0.5">
               {config.difficulty} · {config.mode}
             </strong>
           </div>
-          <div className="bg-[#080D1A] border border-blue-500/10 p-2.5 rounded-lg">
-            <span className="text-[10px] text-slate-500 block uppercase">Engine</span>
-            <strong className="text-white text-xs block truncate">{provider.toUpperCase()}</strong>
+          <div className="bg-muted/70 border border-border p-2.5 rounded-lg">
+            <span className="text-[10px] font-mono text-ink-muted block uppercase">Engine</span>
+            <strong className="text-ink text-xs font-semibold font-mono block truncate mt-0.5">{provider.toUpperCase()}</strong>
           </div>
-          <div className="bg-[#080D1A] border border-blue-500/10 p-2.5 rounded-lg">
-            <span className="text-[10px] text-slate-500 block uppercase">Notes</span>
-            <strong className="text-white text-xs block truncate">
+          <div className="bg-muted/70 border border-border p-2.5 rounded-lg">
+            <span className="text-[10px] font-mono text-ink-muted block uppercase">Notes</span>
+            <strong className="text-ink text-xs font-semibold font-mono block truncate mt-0.5">
               {studyGuideLength.toLocaleString()} chars
             </strong>
           </div>

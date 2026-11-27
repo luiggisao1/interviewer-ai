@@ -1,4 +1,5 @@
 import React from "react";
+import { ArrowRight, CornerDownLeft, MessageSquare, Mic, MicOff, ScrollText, Send } from "lucide-react";
 
 interface SessionControlsTileProps {
   textMode: boolean;
@@ -31,81 +32,114 @@ export const SessionControlsTile: React.FC<SessionControlsTileProps> = ({
   complete,
 }) => {
   return (
-    <div className="md:col-span-4 bg-[#0E1626] border border-blue-500/15 hover:border-blue-500/35 rounded-[18px] p-6 shadow-2xl flex flex-col justify-between transition-colors">
-      <div className="mb-3.5">
-        <span className="text-[10px] font-mono font-bold text-sky-400 tracking-wider block mb-1">
+    <div className="md:col-span-4 bg-card border border-border hover:border-border-strong rounded-xl p-6 shadow-editorial flex flex-col justify-between transition-colors">
+      <div className="mb-3.5 pb-2.5 border-b border-border">
+        <span className="text-[11px] font-mono font-bold text-accent-deep tracking-wider uppercase block mb-0.5">
           TURN ACTIONS
         </span>
-        <h4 className="text-sm font-bold text-white">Session Controls</h4>
+        <h3 className="font-serif text-base font-semibold text-ink">Session Controls</h3>
       </div>
 
       <div className="flex flex-col gap-2.5">
         <button
           type="button"
-          className="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/40 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          className="w-full h-11 bg-ink hover:bg-ink/90 text-white font-semibold text-sm rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           onClick={onSubmitAnswer}
           disabled={answerLength === 0 || loading || complete}
         >
           {loading ? (
             <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
           ) : !textMode ? (
-            "Done Speaking ↵"
+            <>
+              <span>Done Speaking</span>
+              <CornerDownLeft className="w-4 h-4 text-amber-400" aria-hidden="true" />
+            </>
           ) : (
-            "Send Answer ↑"
+            <>
+              <span>Send Answer</span>
+              <Send className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+            </>
           )}
         </button>
 
         <div className="grid grid-cols-3 gap-1.5">
           <button
             type="button"
-            className={`h-9 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+            className={`h-9 px-2 rounded-lg text-xs font-semibold border inline-flex items-center justify-center gap-1 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               muted
-                ? "bg-red-500/20 border-red-500/40 text-red-300"
-                : "bg-[#080D1A] border-blue-500/20 hover:border-blue-500/40 text-slate-300 hover:text-white"
+                ? "bg-red-50 border-red-200 text-danger-deep hover:bg-red-100"
+                : "bg-muted/70 border-border-strong hover:bg-surface text-ink"
             }`}
             onClick={onToggleMute}
             title="Toggle Microphone (Spacebar)"
           >
-            {muted ? "🎙️ Resume" : "🔇 Mute"}
+            {muted ? (
+              <>
+                <Mic className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                <span>Resume</span>
+              </>
+            ) : (
+              <>
+                <MicOff className="w-3.5 h-3.5 text-ink-muted shrink-0" aria-hidden="true" />
+                <span>Mute</span>
+              </>
+            )}
           </button>
 
           <button
             type="button"
-            className="h-9 px-2 rounded-lg text-xs font-semibold bg-[#080D1A] border border-blue-500/20 hover:border-blue-500/40 text-slate-300 hover:text-white transition-all cursor-pointer truncate"
+            className="h-9 px-2 rounded-lg text-xs font-semibold bg-muted/70 border border-border-strong hover:bg-surface text-ink inline-flex items-center justify-center gap-1 transition-colors cursor-pointer truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={() => setTextMode(!textMode)}
             title="Switch between Voice and Text mode"
           >
-            {textMode ? "🎙️ Voice" : "💬 Text"}
+            {textMode ? (
+              <>
+                <Mic className="w-3.5 h-3.5 text-accent-deep shrink-0" aria-hidden="true" />
+                <span>Voice</span>
+              </>
+            ) : (
+              <>
+                <MessageSquare className="w-3.5 h-3.5 text-ink-muted shrink-0" aria-hidden="true" />
+                <span>Text</span>
+              </>
+            )}
           </button>
 
           <button
             type="button"
-            className="h-9 px-2 rounded-lg text-xs font-semibold bg-[#080D1A] border border-blue-500/20 hover:border-blue-500/40 text-slate-300 hover:text-white transition-all cursor-pointer truncate"
+            className="h-9 px-2 rounded-lg text-xs font-semibold bg-muted/70 border border-border-strong hover:bg-surface text-ink inline-flex items-center justify-center gap-1 transition-colors cursor-pointer truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={onToggleTranscript}
             title="View Full Interview History"
           >
-            📜 History
+            <ScrollText className="w-3.5 h-3.5 text-ink-muted shrink-0" aria-hidden="true" />
+            <span>History</span>
           </button>
         </div>
 
         <button
           type="button"
-          className="w-full h-10 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="w-full h-10 bg-red-50 hover:bg-red-100 border border-red-200 text-danger-deep font-semibold text-xs rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           onClick={onEndInterview}
           disabled={!hasCandidateAnswers || loading || isEvaluating}
         >
           {isEvaluating ? (
             <>
-              <span className="inline-block w-3.5 h-3.5 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin mr-1.5" /> Generating Debrief…
+              <span className="inline-block w-3.5 h-3.5 border-2 border-red-300 border-t-danger-deep rounded-full animate-spin mr-1.5" /> Generating Debrief…
             </>
           ) : (
-            "End Interview & Get Debrief →"
+            <>
+              <span>End Interview &amp; Get Debrief</span>
+              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </>
           )}
         </button>
       </div>
 
-      <div className="pt-2 text-center text-[11px] text-slate-500 font-mono">
-        <span>Hotkeys: <kbd className="bg-white/10 px-1 py-0.5 rounded text-slate-300">Space</kbd> Mic Pause · <kbd className="bg-white/10 px-1 py-0.5 rounded text-slate-300">Enter</kbd> Commit</span>
+      <div className="pt-2.5 text-center text-xs text-ink-muted font-mono">
+        <span>
+          Hotkeys: <kbd className="bg-muted border border-border-strong px-1.5 py-0.5 rounded text-ink">Space</kbd> Mic Pause ·{" "}
+          <kbd className="bg-muted border border-border-strong px-1.5 py-0.5 rounded text-ink">Enter</kbd> Commit
+        </span>
       </div>
     </div>
   );

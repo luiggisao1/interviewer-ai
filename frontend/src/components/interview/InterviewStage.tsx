@@ -1,4 +1,5 @@
 import React, { FormEvent, useState } from "react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import type { InterviewConfig, Message, Plan } from "../../types";
 import { QuestionHeroTile } from "./QuestionHeroTile";
 import { InterviewerAudioTile } from "./InterviewerAudioTile";
@@ -60,27 +61,31 @@ export const InterviewStage: React.FC<InterviewStageProps> = ({
   const hasCandidateAnswers = messages.some((m) => m.role === "candidate");
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex-1 min-h-0 overflow-y-auto py-2 pr-1 flex flex-col gap-5 max-w-[1280px] mx-auto w-full">
       {error && (
-        <div className="bg-red-500/15 border border-red-500/35 text-red-200 px-4 py-3 rounded-xl text-sm font-medium">
+        <div className="bg-red-50 border border-red-200 text-danger-deep px-4 py-3 rounded-xl text-sm font-medium">
           {error}
         </div>
       )}
 
       {complete && (
-        <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 text-sm font-semibold">
-          <span>
-            {isEvaluating
-              ? "✓ Interview complete — synthesizing your evaluation debrief…"
-              : "✓ Interview complete — launching your evaluation debrief…"}
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 px-5 py-3.5 rounded-xl flex items-center justify-between gap-4 text-sm font-semibold shadow-sm">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-verified-deep shrink-0" aria-hidden="true" />
+            <span>
+              {isEvaluating
+                ? "Interview complete — synthesizing your evaluation debrief…"
+                : "Interview complete — launching your evaluation debrief…"}
+            </span>
           </span>
           <button
             type="button"
             onClick={onEndInterview}
             disabled={loading || isEvaluating}
-            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-full cursor-pointer shadow-lg shadow-emerald-500/30 transition-all disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 bg-verified hover:bg-verified-deep text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer shadow-sm transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            {isEvaluating ? "Synthesizing…" : "Run Debrief Now →"}
+            <span>{isEvaluating ? "Synthesizing…" : "Run Debrief Now"}</span>
+            {!isEvaluating && <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />}
           </button>
         </div>
       )}
@@ -104,7 +109,7 @@ export const InterviewStage: React.FC<InterviewStageProps> = ({
           onSubmitAnswer={onSubmitAnswer}
         />
 
-        {/* Tile 2: Connie AI Persona & Dynamic Audio Equalizer (4 Cols) */}
+        {/* Tile 2: Interviewer AI Persona & Dynamic Audio Equalizer (4 Cols) */}
         <InterviewerAudioTile
           voiceStatus={voiceStatus}
           muted={muted}

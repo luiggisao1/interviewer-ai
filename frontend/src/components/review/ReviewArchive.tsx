@@ -63,10 +63,10 @@ function formatDate(iso: string): string {
 }
 
 function getScoreBadgeClass(score: number): string {
-  if (score >= 85) return "bg-emerald-950/70 border-emerald-500/40 text-emerald-300";
-  if (score >= 70) return "bg-blue-950/70 border-blue-500/40 text-blue-300";
-  if (score >= 55) return "bg-amber-950/70 border-amber-500/40 text-amber-300";
-  return "bg-red-950/70 border-red-500/40 text-red-300";
+  if (score >= 85) return "bg-emerald-50 border-emerald-200 text-verified-deep";
+  if (score >= 70) return "bg-sky-50 border-sky-200 text-sky-800";
+  if (score >= 55) return "bg-amber-50 border-amber-200 text-accent-deep";
+  return "bg-red-50 border-red-200 text-danger-deep";
 }
 
 function downloadMarkdown(content: string, filename: string): void {
@@ -102,7 +102,7 @@ const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
 }) => {
   if (!showCandidateAnswers && !showSeniorAnswers) {
     return (
-      <div className="bg-black/30 border border-white/5 rounded-xl px-4 py-3 text-xs text-slate-400 italic">
+      <div className="bg-muted/70 border border-border rounded-lg px-4 py-3 text-xs text-ink-muted italic">
         Both answer panels are hidden. Enable &ldquo;Candidate Answers&rdquo; or &ldquo;LLM Senior Answers&rdquo; above to inspect responses.
       </div>
     );
@@ -114,17 +114,17 @@ const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
   return (
     <div className={`grid ${gridCols} gap-3.5`}>
       {showCandidateAnswers && (
-        <div className="bg-black/40 p-4 rounded-xl border border-white/10 flex flex-col gap-1.5">
-          <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+        <div className="bg-muted/70 p-4 rounded-lg border border-border flex flex-col gap-1.5">
+          <span className="text-[11px] font-mono font-bold text-ink-muted uppercase tracking-wider">
             {candidateName}&rsquo;s Answer
           </span>
           {candidateAnswer !== null ? (
-            <p className="text-[14px] text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">
+            <p className="text-[14px] text-ink leading-relaxed font-sans whitespace-pre-wrap">
               {candidateAnswer || "No response recorded."}
             </p>
           ) : (
-            <div className="flex items-center gap-2 text-xs text-slate-400 italic py-1">
-              <Shield className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <div className="flex items-center gap-2 text-xs text-ink-muted italic py-1">
+              <Shield className="w-3.5 h-3.5 text-accent-deep shrink-0" aria-hidden="true" />
               <span>
                 Candidate answer not stored (
                 {storageMode === "senior_only" ? "Senior-only mode" : "Omitted"}).
@@ -135,29 +135,29 @@ const AnswerComparisonGrid: React.FC<AnswerComparisonGridProps> = ({
       )}
 
       {showSeniorAnswers && (
-        <div className="bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/30 flex flex-col gap-2">
+        <div className="bg-emerald-50/70 p-4 rounded-lg border border-emerald-200 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
+            <span className="text-[11px] font-mono font-bold text-verified-deep uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{hasSeniorText ? "LLM Suggested Senior Answer" : "Gold Standard Validation"}</span>
             </span>
           </div>
 
           {hasSeniorText ? (
             <>
-              <p className="text-[14px] text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">
+              <p className="text-[14px] text-ink leading-relaxed font-sans whitespace-pre-wrap">
                 {seniorAnswer}
               </p>
               {whyStronger.trim() && (
-                <div className="mt-1 bg-blue-950/35 border border-blue-500/20 rounded-lg p-2.5 text-xs text-slate-300 leading-relaxed">
-                  <strong className="text-sky-300 font-semibold">Why stronger: </strong>
+                <div className="mt-1 bg-surface border border-accent/30 rounded-lg p-2.5 text-xs text-ink-secondary leading-relaxed">
+                  <strong className="text-accent-deep font-semibold">Why stronger: </strong>
                   {whyStronger}
                 </div>
               )}
             </>
           ) : (
-            <div className="flex items-start gap-2 text-[13.5px] text-emerald-200 leading-relaxed">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 text-[13.5px] text-emerald-950 leading-relaxed">
+              <CheckCircle2 className="w-4 h-4 text-verified-deep shrink-0 mt-0.5" aria-hidden="true" />
               <span>
                 {whyStronger.trim() || "Candidate response already matched senior benchmark bar."}
               </span>
@@ -298,34 +298,34 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden w-full max-w-[1320px] mx-auto py-1">
       {/* Top Toolbar */}
-      <div className="bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-4 md:p-5 shadow-xl flex flex-col gap-4 shrink-0">
+      <div className="bg-card border border-border rounded-xl p-4 md:p-5 shadow-editorial flex flex-col gap-4 shrink-0">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center justify-center shrink-0">
-              <Database className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/25 text-accent-deep flex items-center justify-center shrink-0">
+              <Database className="w-4 h-4" aria-hidden="true" />
             </div>
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-lg font-bold text-white tracking-tight">
+                <h1 className="font-serif text-xl font-semibold text-ink tracking-tight">
                   Interview Response Archive
                 </h1>
                 <div className="flex items-center gap-1.5 text-[11px] font-mono">
-                  <span className="bg-sky-950/70 border border-sky-500/25 text-sky-300 px-2 py-0.5 rounded-full">
+                  <span className="bg-surface border border-border-strong text-ink px-2 py-0.5 rounded-full">
                     {totalSessions} {totalSessions === 1 ? "Session" : "Sessions"}
                   </span>
-                  <span className="bg-emerald-950/60 border border-emerald-500/25 text-emerald-300 px-2 py-0.5 rounded-full">
+                  <span className="bg-emerald-50 border border-emerald-200 text-verified-deep px-2 py-0.5 rounded-full">
                     {totalQuestions} {totalQuestions === 1 ? "Question" : "Questions"}
                   </span>
-                  <span className="bg-purple-950/60 border border-purple-500/25 text-purple-300 px-2 py-0.5 rounded-full">
+                  <span className="bg-amber-50 border border-amber-200 text-accent-deep px-2 py-0.5 rounded-full">
                     {totalPeople} {totalPeople === 1 ? "Person" : "People"}
                   </span>
-                  <span className="inline-flex items-center gap-1 bg-slate-800/80 border border-white/10 text-slate-300 px-2 py-0.5 rounded-full">
-                    <Lock className="w-2.5 h-2.5 text-slate-400" />
+                  <span className="inline-flex items-center gap-1 bg-muted border border-border text-ink-muted px-2 py-0.5 rounded-full">
+                    <Lock className="w-2.5 h-2.5 text-ink-muted" aria-hidden="true" />
                     <span>Read-Only</span>
                   </span>
                 </div>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-ink-muted mt-0.5">
                 Compare how different candidates answered each question alongside the LLM-suggested senior benchmark answers
               </p>
             </div>
@@ -344,24 +344,24 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
               disabled={exporting || (view === "questions" ? questionGroups.length === 0 : sessions.length === 0)}
               onClick={() => void handleExportMarkdown()}
               title="Download filtered archive as Markdown (.md)"
-              className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-[10px] text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-verified-deep border border-emerald-200 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{exporting ? "Exporting…" : "Export .md"}</span>
             </button>
           </div>
         </div>
 
         {/* Filter Bar & Display Toggles */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center pt-3 border-t border-white/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-center pt-3 border-t border-border">
           <div className="lg:col-span-4 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-4 h-4 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search questions, answers, names, topics..."
-              className="bg-[#080D1A] border border-blue-500/15 rounded-[10px] pl-9 pr-3.5 py-2 h-[42px] text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors w-full"
+              className="bg-muted/60 border border-border-strong rounded-lg pl-9 pr-3.5 py-2 h-[42px] text-sm text-ink placeholder:text-ink-muted/70 outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-accent transition-colors w-full"
             />
           </div>
 
@@ -415,13 +415,13 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
               type="button"
               onClick={() => setShowCandidateAnswers((v) => !v)}
               title="Toggle candidate answers visibility"
-              className={`flex items-center gap-1 px-2.5 h-[42px] rounded-[10px] text-xs font-semibold border transition-colors cursor-pointer ${
+              className={`flex items-center gap-1 px-2.5 h-[42px] rounded-lg text-xs font-semibold border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 showCandidateAnswers
-                  ? "bg-blue-500/15 border-blue-500/30 text-sky-300"
-                  : "bg-[#080D1A] border-white/10 text-slate-400 hover:text-white"
+                  ? "bg-surface border-accent/40 text-accent-deep"
+                  : "bg-muted/70 border-border text-ink-muted hover:text-ink"
               }`}
             >
-              {showCandidateAnswers ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {showCandidateAnswers ? <Eye className="w-3.5 h-3.5" aria-hidden="true" /> : <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />}
               <span>Answers</span>
             </button>
 
@@ -429,13 +429,13 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
               type="button"
               onClick={() => setShowSeniorAnswers((v) => !v)}
               title="Toggle LLM senior answers visibility"
-              className={`flex items-center gap-1 px-2.5 h-[42px] rounded-[10px] text-xs font-semibold border transition-colors cursor-pointer ${
+              className={`flex items-center gap-1 px-2.5 h-[42px] rounded-lg text-xs font-semibold border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 showSeniorAnswers
-                  ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                  : "bg-[#080D1A] border-white/10 text-slate-400 hover:text-white"
+                  ? "bg-emerald-50 border-emerald-300 text-verified-deep"
+                  : "bg-muted/70 border-border text-ink-muted hover:text-ink"
               }`}
             >
-              {showSeniorAnswers ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {showSeniorAnswers ? <Eye className="w-3.5 h-3.5" aria-hidden="true" /> : <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />}
               <span>Senior</span>
             </button>
 
@@ -443,41 +443,42 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
               type="button"
               onClick={() => void loadArchive()}
               title="Refresh archive"
-              className="w-[42px] h-[42px] rounded-[10px] bg-[#080D1A] border border-blue-500/15 hover:border-blue-500/35 text-slate-300 hover:text-white flex items-center justify-center transition-colors shrink-0 cursor-pointer"
+              aria-label="Refresh archive"
+              className="w-[42px] h-[42px] rounded-lg bg-muted/70 border border-border-strong hover:bg-surface text-ink-secondary hover:text-ink flex items-center justify-center transition-colors shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-sky-400" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-accent-deep" : ""}`} aria-hidden="true" />
             </button>
           </div>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-500/15 border border-red-500/30 text-red-200 px-4 py-2.5 rounded-xl text-xs font-medium shrink-0">
+        <div className="bg-red-50 border border-red-200 text-danger-deep px-4 py-2.5 rounded-xl text-xs font-medium shrink-0">
           {error}
         </div>
       )}
 
       {/* Main Content Area */}
       {loading && questionGroups.length === 0 && sessions.length === 0 ? (
-        <div className="flex-1 min-h-0 bg-[#0E1626] border border-blue-500/15 rounded-[18px] flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
-          <RefreshCw className="w-6 h-6 animate-spin text-sky-400" />
+        <div className="flex-1 min-h-0 bg-card border border-border rounded-xl flex flex-col items-center justify-center gap-3 text-ink-muted text-sm">
+          <RefreshCw className="w-6 h-6 animate-spin text-accent-deep" aria-hidden="true" />
           <span>Loading saved interview responses…</span>
         </div>
       ) : (view === "questions" ? questionGroups.length === 0 : sessions.length === 0) ? (
-        <div className="flex-1 min-h-0 bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-8 flex flex-col items-center justify-center text-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/25 flex items-center justify-center text-sky-400">
-            <MessageSquare className="w-6 h-6" />
+        <div className="flex-1 min-h-0 bg-card border border-border rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-surface border border-border-strong flex items-center justify-center text-accent-deep">
+            <MessageSquare className="w-6 h-6" aria-hidden="true" />
           </div>
-          <h2 className="text-base font-bold text-white">No saved interview responses found</h2>
-          <p className="text-sm text-slate-400 max-w-md">
+          <h2 className="font-serif text-lg font-semibold text-ink">No saved interview responses found</h2>
+          <p className="text-sm text-ink-muted max-w-md">
             Complete an interview with &ldquo;My Answers + Senior&rdquo; or &ldquo;Senior Only&rdquo; selected, or adjust your search filters above.
           </p>
           <button
             type="button"
             onClick={onStartNew}
-            className="mt-2 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+            className="mt-2 inline-flex items-center gap-2 bg-ink hover:bg-ink/90 text-white font-semibold text-sm px-4 py-2.5 rounded-lg shadow-sm transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 text-amber-400" aria-hidden="true" />
             <span>Start New Interview</span>
           </button>
         </div>
@@ -487,25 +488,25 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
           {questionGroups.map((group, groupIdx) => (
             <section
               key={`${group.question}-${groupIdx}`}
-              className="bg-[#0E1626] border border-blue-500/15 hover:border-blue-500/30 rounded-[18px] p-5 shadow-xl flex flex-col gap-4 transition-colors"
+              className="bg-card border border-border hover:border-border-strong rounded-xl p-5 shadow-editorial flex flex-col gap-4 transition-colors"
             >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pb-3 border-b border-white/10">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pb-3 border-b border-border">
                 <div className="flex items-start gap-2.5">
-                  <span className="text-xs font-mono font-bold bg-sky-950/70 border border-sky-500/30 text-sky-300 px-2.5 py-1 rounded shrink-0 mt-0.5">
+                  <span className="text-xs font-mono font-bold bg-accent/10 border border-accent/25 text-accent-deep px-2.5 py-1 rounded shrink-0 mt-0.5">
                     Q{groupIdx + 1}
                   </span>
-                  <h2 className="text-[15px] font-bold text-white leading-snug">{group.question}</h2>
+                  <h2 className="font-serif text-[17px] font-semibold text-ink leading-snug">{group.question}</h2>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   {group.study_guide_section && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-[#080D1A] border border-blue-500/20 text-sky-300 px-2.5 py-1 rounded-full">
-                      <BookOpen className="w-3 h-3" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-surface border border-border-strong text-ink-secondary px-2.5 py-1 rounded-full">
+                      <BookOpen className="w-3 h-3 text-accent-deep" aria-hidden="true" />
                       <span>{group.study_guide_section}</span>
                     </span>
                   )}
-                  <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold bg-blue-600/15 border border-blue-500/30 text-blue-300 px-2.5 py-1 rounded-full">
-                    <Users className="w-3 h-3" />
+                  <span className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold bg-muted border border-border text-ink px-2.5 py-1 rounded-full">
+                    <Users className="w-3 h-3 text-ink-muted" aria-hidden="true" />
                     <span>
                       {group.answer_count} {group.answer_count === 1 ? "response" : "responses"}
                     </span>
@@ -517,22 +518,22 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                 {group.entries.map((entry) => (
                   <article
                     key={entry.response_id}
-                    className="bg-[#080D1A] border border-white/10 rounded-2xl p-4 flex flex-col gap-3"
+                    className="bg-surface/40 border border-border rounded-xl p-4 flex flex-col gap-3"
                   >
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
-                          <User className="w-3.5 h-3.5 text-sky-400" />
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink bg-card border border-border px-2.5 py-1 rounded-lg">
+                          <User className="w-3.5 h-3.5 text-accent-deep" aria-hidden="true" />
                           <span>{entry.candidate_name}</span>
                         </span>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-ink-muted">
                           {entry.difficulty} · {entry.role}
                         </span>
                         <span
                           className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
                             entry.storage_mode === "senior_only"
-                              ? "bg-sky-950/60 border-sky-500/30 text-sky-300"
-                              : "bg-emerald-950/50 border-emerald-500/25 text-emerald-300"
+                              ? "bg-amber-50 border-amber-200 text-accent-deep"
+                              : "bg-emerald-50 border-emerald-200 text-verified-deep"
                           }`}
                         >
                           {entry.storage_mode === "senior_only" ? "Senior Only" : "Full"}
@@ -546,12 +547,12 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                               entry.overall_score
                             )}`}
                           >
-                            <Award className="w-3 h-3" />
+                            <Award className="w-3 h-3" aria-hidden="true" />
                             <span>{entry.overall_score}/100</span>
                           </span>
                         )}
-                        <span className="text-slate-500 inline-flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
+                        <span className="text-ink-muted inline-flex items-center gap-1">
+                          <Calendar className="w-3 h-3" aria-hidden="true" />
                           <span>{formatDate(entry.created_at)}</span>
                         </span>
                       </div>
@@ -576,7 +577,7 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
         /* VIEW 2: Browse by Person / Session */
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 overflow-hidden">
           {/* Left Column (4 cols): Session List */}
-          <div className="lg:col-span-4 bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-4 flex flex-col gap-2.5 min-h-0 overflow-y-auto">
+          <div className="lg:col-span-4 bg-card border border-border rounded-xl p-4 flex flex-col gap-2.5 min-h-0 overflow-y-auto shadow-editorial">
             {sessions.map((session) => {
               const isSelected = session.id === selectedSessionId;
               return (
@@ -591,16 +592,16 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                       setSelectedSessionId(session.id);
                     }
                   }}
-                  className={`rounded-2xl p-3.5 border transition-all cursor-pointer flex flex-col gap-2 ${
+                  className={`rounded-xl p-3.5 border transition-colors cursor-pointer flex flex-col gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                     isSelected
-                      ? "bg-blue-600/15 border-blue-500/50 shadow-lg shadow-blue-950/40"
-                      : "bg-[#080D1A] border-white/10 hover:border-blue-500/30"
+                      ? "bg-surface border-accent/60 shadow-sm"
+                      : "bg-muted/40 border-border hover:border-border-strong"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <User className="w-4 h-4 text-sky-400 shrink-0" />
-                      <span className="font-bold text-sm text-white truncate">
+                      <User className="w-4 h-4 text-accent-deep shrink-0" aria-hidden="true" />
+                      <span className="font-bold text-sm text-ink truncate">
                         {session.candidate_name}
                       </span>
                     </div>
@@ -615,20 +616,20 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                           {session.overall_score}/100
                         </span>
                       ) : (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border bg-sky-950/60 border-sky-500/30 text-sky-300">
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-accent-deep">
                           Senior Only
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="text-xs text-slate-300 font-medium line-clamp-1">
+                  <div className="text-xs text-ink-secondary font-medium line-clamp-1">
                     {session.plan_title || `${session.difficulty} ${session.role}`}
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400 flex-wrap">
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-ink-muted flex-wrap">
                     <span className="inline-flex items-center gap-1">
-                      <Layers className="w-3 h-3 text-sky-400" />
+                      <Layers className="w-3 h-3 text-accent-deep" aria-hidden="true" />
                       <span>
                         {session.study_guide_section || session.role} · {session.response_count} Q
                       </span>
@@ -641,36 +642,36 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
           </div>
 
           {/* Right Column (8 cols): Session Detail */}
-          <div className="lg:col-span-8 bg-[#0E1626] border border-blue-500/15 rounded-[18px] p-5 flex flex-col gap-4 min-h-0 overflow-y-auto">
+          <div className="lg:col-span-8 bg-card border border-border rounded-xl p-5 flex flex-col gap-4 min-h-0 overflow-y-auto shadow-editorial">
             {detailLoading ? (
-              <div className="flex-1 flex items-center justify-center gap-2 text-slate-400 text-sm">
-                <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+              <div className="flex-1 flex items-center justify-center gap-2 text-ink-muted text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin text-accent-deep" aria-hidden="true" />
                 <span>Loading session details…</span>
               </div>
             ) : !selectedSessionDetail ? (
-              <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+              <div className="flex-1 flex items-center justify-center text-ink-muted text-sm">
                 Select a session on the left to inspect its questions and answers.
               </div>
             ) : (
               <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-white/10 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-border shrink-0">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base font-bold text-white">
+                      <h2 className="font-serif text-lg font-semibold text-ink">
                         {selectedSessionDetail.candidate_name}
                       </h2>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-ink-muted">
                         · {selectedSessionDetail.difficulty} {selectedSessionDetail.role} ({selectedSessionDetail.mode})
                       </span>
                       {selectedSessionDetail.study_guide_section && (
-                        <span className="text-[11px] bg-sky-950/70 border border-sky-500/25 text-sky-300 px-2 py-0.5 rounded-full">
+                        <span className="text-[11px] bg-surface border border-border-strong text-accent-deep font-medium px-2 py-0.5 rounded-full">
                           {selectedSessionDetail.study_guide_section}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-ink-muted mt-1">
                       {selectedSessionDetail.plan_title} · Engine:{" "}
-                      <span className="uppercase font-mono text-slate-300">
+                      <span className="uppercase font-mono text-ink">
                         {selectedSessionDetail.provider}
                       </span>{" "}
                       · {formatDate(selectedSessionDetail.created_at)}
@@ -684,12 +685,12 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                           selectedSessionDetail.overall_score
                         )}`}
                       >
-                        <Award className="w-3.5 h-3.5" />
+                        <Award className="w-3.5 h-3.5" aria-hidden="true" />
                         <span>Score: {selectedSessionDetail.overall_score} / 100</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold px-3 py-1 rounded-full border bg-sky-950/60 border-sky-500/30 text-sky-300 w-fit">
-                        <Shield className="w-3.5 h-3.5" />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold px-3 py-1 rounded-full border bg-amber-50 border-amber-200 text-accent-deep w-fit">
+                        <Shield className="w-3.5 h-3.5" aria-hidden="true" />
                         <span>Senior Benchmark Only</span>
                       </span>
                     )}
@@ -699,17 +700,17 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                       disabled={exporting}
                       onClick={() => void handleExportMarkdown(selectedSessionDetail.id)}
                       title="Download this session as Markdown (.md)"
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-verified-deep border border-emerald-200 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Export Session .md</span>
                     </button>
                   </div>
                 </div>
 
                 {selectedSessionDetail.summary && (
-                  <div className="bg-[#080D1A] border border-blue-500/15 rounded-2xl p-4 text-sm text-slate-200 leading-relaxed">
-                    <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  <div className="bg-surface border border-border rounded-xl p-4 text-sm text-ink-secondary leading-relaxed">
+                    <span className="text-[11px] font-mono font-bold text-ink-muted uppercase tracking-wider block mb-1">
                       Executive Summary
                     </span>
                     {selectedSessionDetail.summary}
@@ -717,7 +718,7 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                 )}
 
                 {selectedSessionDetail.responses.length === 0 ? (
-                  <div className="bg-[#080D1A] border border-white/10 rounded-2xl p-6 text-center text-sm text-slate-400">
+                  <div className="bg-muted/60 border border-border rounded-xl p-6 text-center text-sm text-ink-muted">
                     No question-answer pairs were recorded for this session.
                   </div>
                 ) : (
@@ -725,13 +726,13 @@ export const ReviewArchive: React.FC<ReviewArchiveProps> = ({ onStartNew }) => {
                     {selectedSessionDetail.responses.map((item) => (
                       <article
                         key={item.id}
-                        className="bg-[#080D1A] border border-white/10 rounded-2xl p-4 flex flex-col gap-3"
+                        className="bg-surface/40 border border-border rounded-xl p-4 flex flex-col gap-3"
                       >
                         <div className="flex items-start gap-2.5">
-                          <span className="text-xs font-mono font-bold bg-sky-950/70 border border-sky-500/30 text-sky-300 px-2 py-0.5 rounded shrink-0 mt-0.5">
+                          <span className="text-xs font-mono font-bold bg-accent/10 border border-accent/25 text-accent-deep px-2 py-0.5 rounded shrink-0 mt-0.5">
                             Q{item.question_order}
                           </span>
-                          <h3 className="text-sm font-bold text-white leading-snug">
+                          <h3 className="font-serif text-base font-semibold text-ink leading-snug">
                             {item.question}
                           </h3>
                         </div>

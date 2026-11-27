@@ -25,7 +25,7 @@ export function SegmentedControl<T extends string | number>({
     <div
       role="radiogroup"
       className={cn(
-        "flex items-center bg-[#080D1A] border border-blue-500/15 rounded-[10px] p-1 gap-1",
+        "flex items-center bg-muted border border-border rounded-lg p-1 gap-1",
         size === "sm" ? "h-[36px]" : "h-[42px]",
         className
       )}
@@ -40,11 +40,11 @@ export function SegmentedControl<T extends string | number>({
             aria-checked={isSelected}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "flex-1 h-full flex items-center justify-center font-semibold rounded-lg transition-all duration-200 select-none whitespace-nowrap",
+              "flex-1 h-full flex items-center justify-center font-semibold rounded-md transition-all duration-150 select-none whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
               size === "sm" ? "text-xs px-2" : "text-[13px] px-2.5",
               isSelected
-                ? "bg-blue-600 text-white shadow-md shadow-blue-600/40"
-                : "text-slate-400 hover:text-white hover:bg-white/5"
+                ? "bg-ink text-white shadow-sm"
+                : "text-ink-muted hover:text-ink hover:bg-card/80"
             )}
           >
             {opt.label}
